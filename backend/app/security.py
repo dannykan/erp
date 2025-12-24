@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 import bcrypt
 from jose import jwt
 from fastapi import HTTPException, status
 from .config import settings
 
 # Use bcrypt directly to avoid passlib initialization issues
+# This avoids the "password cannot be longer than 72 bytes" error that occurs
+# during passlib's internal initialization with bcrypt library version mismatch
 ALGORITHM = "HS256"
 
 def hash_password(password: str) -> str:
@@ -40,9 +41,6 @@ def verify_password(password: str, password_hash: str) -> bool:
     
     # Use bcrypt directly to verify
     return bcrypt.checkpw(password_bytes, password_hash.encode('utf-8'))
-
-def verify_password(password: str, password_hash: str) -> bool:
-    return pwd_context.verify(password, password_hash)
 
 def create_access_token(subject: str, expires_minutes: int | None = None) -> str:
     expire = datetime.utcnow() + timedelta(
