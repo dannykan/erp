@@ -89,16 +89,19 @@
 
 ### 資料庫 Migration（自動執行）
 
-#### 選項 1：使用 Render Deploy Hook（推薦）
+#### 選項 1：使用 Render Pre-Deploy Command（推薦）
 
 在 Render Web Service 的設定中：
 
-1. 進入 **"Settings"** → **"Deploy"**
-2. 在 **"Release Command"** 欄位輸入：
+1. 進入 **"Settings"** → **"Build & Deploy"**
+2. 找到 **"Pre-Deploy Command (Optional)"** 區塊
+3. 點選右側的 **"Edit"** 按鈕
+4. 在輸入欄位中輸入：
    ```
-   cd backend && alembic upgrade head
+   alembic upgrade head
    ```
-3. 每次部署時會自動執行 migration
+5. 點選 **"Save Changes"**
+6. ⚠️ **說明**：這個命令會在每次部署前自動執行，確保資料庫 schema 是最新的
 
 #### 選項 2：手動執行 Migration
 

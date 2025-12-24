@@ -86,7 +86,12 @@ def import_products(csv_file: str):
                         spec = parts[1].strip()
                 
                 quotation_unit = row.get('報價單位', '').strip() or '件'
-                pieces_per_case = parse_pieces_per_case(row.get('件入數(箱入數)', ''))
+                # 尝试多种可能的列名（处理换行符问题）
+                pieces_per_case_value = (row.get('件入數(箱入數)', '') or 
+                                        row.get('件入數\n(箱入數)', '') or 
+                                        row.get('件入數\r\n(箱入數)', '') or
+                                        row.get('件入數\r(箱入數)', ''))
+                pieces_per_case = parse_pieces_per_case(pieces_per_case_value)
                 pack_quantity = parse_pack_quantity(row.get('包入數', ''))
                 model = row.get('型號', '').strip() or None
                 brand = row.get('品牌', '').strip() or None
