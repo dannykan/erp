@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from passlib.context import CryptContext
+import bcrypt
 from jose import jwt
 from fastapi import HTTPException, status
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+# Use bcrypt directly to avoid passlib initialization issues
 ALGORITHM = "HS256"
 
 def hash_password(password: str) -> str:
@@ -20,17 +21,25 @@ def hash_password(password: str) -> str:
     password_bytes = password.encode('utf-8')
     if len(password_bytes) > 72:
         password_bytes = password_bytes[:72]
-        password = password_bytes.decode('utf-8', errors='ignore')
     
-    try:
-        return pwd_context.hash(password)
-    except ValueError as e:
-        # If there's still an error, try with explicit encoding handling
-        if "72 bytes" in str(e):
-            # Fallback: use first 72 bytes
-            password = password_bytes[:72].decode('utf-8', errors='ignore')
-            return pwd_context.hash(password)
-        raise
+    # Use bcrypt directly to hash the password
+    salt = bcrypt.gensalt(rounds=12)
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against a hash."""
+    # Ensure password is a string
+    if not isinstance(password, str):
+        password = str(password)
+    
+    # Bcrypt limit is 72 bytes, truncate if necessary
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    
+    # Use bcrypt directly to verify
+    return bcrypt.checkpw(password_bytes, password_hash.encode('utf-8'))
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
