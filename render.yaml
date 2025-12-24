@@ -1,0 +1,31 @@
+services:
+  # Backend FastAPI Service
+  - type: web
+    name: chopsticks-erp-backend
+    env: python
+    region: singapore  # 可以改為 asia 或你的區域
+    plan: free  # 或 starter/standard 依需求
+    rootDir: backend  # 指定 backend 目錄為根目錄
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chopsticks-erp-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false  # 需要手動設定，包含 Vercel 網域
+      - key: ENV
+        value: production
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 1440
+
+databases:
+  # PostgreSQL Database
+  - name: chopsticks-erp-db
+    plan: free  # 或 starter/standard 依需求
+    databaseName: chopsticks_erp
+    user: chopsticks_erp_user
+
