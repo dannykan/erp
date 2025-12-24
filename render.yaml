@@ -7,6 +7,7 @@ services:
     plan: free  # 或 starter/standard 依需求
     rootDir: backend  # 指定 backend 目錄為根目錄
     buildCommand: pip install -r requirements.txt
+    preDeployCommand: alembic upgrade head  # 部署前執行 migration
     startCommand: gunicorn -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT
     envVars:
       - key: DATABASE_URL

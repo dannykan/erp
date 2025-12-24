@@ -4,10 +4,16 @@ from jose import jwt
 from fastapi import HTTPException, status
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__ident="2b")
 ALGORITHM = "HS256"
 
 def hash_password(password: str) -> str:
+    # Ensure password is not longer than 72 bytes (bcrypt limit)
+    if isinstance(password, str):
+        password_bytes = password.encode('utf-8')
+        if len(password_bytes) > 72:
+            password_bytes = password_bytes[:72]
+            password = password_bytes.decode('utf-8', errors='ignore')
     return pwd_context.hash(password)
 
 def verify_password(password: str, password_hash: str) -> bool:
