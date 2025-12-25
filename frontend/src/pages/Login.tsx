@@ -12,6 +12,7 @@ export default function Login() {
   // 如果已經登入，自動跳轉
   useEffect(() => {
     if (me) {
+      setLoading(false); // 確保重置 loading 狀態
       nav('/sales-orders', { replace: true });
     }
   }, [me, nav]);
@@ -29,6 +30,8 @@ export default function Login() {
               await refreshMe();
               message.success('登入成功');
               // useEffect 會監聽 me 的變化並自動導航
+              // 重置 loading 狀態，如果跳轉失敗至少不會卡住
+              setLoading(false);
             } catch {
               message.error('登入失敗：請確認帳密');
               setLoading(false);
