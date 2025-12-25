@@ -29,9 +29,8 @@ export default function Login() {
               setToken(data.access_token);
               await refreshMe();
               message.success('登入成功');
-              // useEffect 會監聽 me 的變化並自動導航
-              // 重置 loading 狀態，如果跳轉失敗至少不會卡住
-              setLoading(false);
+              // 直接导航，不依赖 useEffect
+              nav('/sales-orders', { replace: true });
             } catch {
               message.error('登入失敗：請確認帳密');
               setLoading(false);
