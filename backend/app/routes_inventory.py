@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, nullslast
 from .db import get_db, engine, Base
 from .deps import get_current_user, require_roles
 from .models import Product, InventoryMove, Role, MoveType
@@ -55,7 +55,7 @@ def inventory_list(
         )
         .outerjoin(sub, sub.c.pid == Product.id)
         .filter(Product.is_active == True)
-        .order_by(desc(Product.id))
+        .order_by(nullslast(Product.sku), Product.id)
     )
 
     if q:

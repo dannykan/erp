@@ -125,7 +125,15 @@ export default function Inventory() {
           </Space>,
         ]}
         request={async (params) => {
-          const q = (params.keyword as string) || undefined;
+          // ProTable 搜索参数：优先使用 keyword，如果没有则使用具体字段（如 name, sku）
+          const searchValues: string[] = [];
+          if (params.keyword && typeof params.keyword === 'string') searchValues.push(params.keyword.trim());
+          if (params.name && typeof params.name === 'string') searchValues.push(params.name.trim());
+          if (params.sku && typeof params.sku === 'string') searchValues.push(params.sku.trim());
+          
+          // 使用第一个非空值作为搜索关键词
+          const q = searchValues.find(v => v.length > 0) || undefined;
+          
           const data = await api.listInventory({ q, low_only: lowOnly });
           return { data, success: true };
         }}
