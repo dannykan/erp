@@ -126,8 +126,31 @@ export const api = {
     }
     return request(`/sales-orders/${id}/ship`, opts);
   },
+  confirmPayment: (id: number) => request(`/sales-orders/${id}/confirm-payment`, { method: 'POST' }),
   printPicklistPdf: (id: number) => request(`/sales-orders/${id}/picklist.pdf`),
   printShippingPdf: (id: number) => request(`/sales-orders/${id}/shipping.pdf`),
+  getMergedUnpaidSOs: (params: {
+    customer_name: string;
+    shipped_at_from?: string;
+    shipped_at_to?: string;
+  }) => {
+    const usp = new URLSearchParams();
+    usp.set('customer_name', params.customer_name);
+    if (params.shipped_at_from) usp.set('shipped_at_from', params.shipped_at_from);
+    if (params.shipped_at_to) usp.set('shipped_at_to', params.shipped_at_to);
+    return request(`/sales-orders/merged-unpaid?${usp.toString()}`);
+  },
+  printMergedUnpaidSOs: (params: {
+    customer_name: string;
+    shipped_at_from?: string;
+    shipped_at_to?: string;
+  }) => {
+    const usp = new URLSearchParams();
+    usp.set('customer_name', params.customer_name);
+    if (params.shipped_at_from) usp.set('shipped_at_from', params.shipped_at_from);
+    if (params.shipped_at_to) usp.set('shipped_at_to', params.shipped_at_to);
+    return request(`/sales-orders/merged-unpaid/print.pdf?${usp.toString()}`);
+  },
   lastSO: (customer_name: string) =>
     request(`/sales-orders/last?customer_name=${encodeURIComponent(customer_name)}`),
   commonSOItems: (customer_name: string, limit = 50) =>
@@ -138,6 +161,21 @@ export const api = {
     request(`/sales-reports/product-customers?${new URLSearchParams(params as any).toString()}`),
   exportProductCustomersXlsx: (params: any) =>
     request(`/sales-reports/product-customers/export.xlsx?${new URLSearchParams(params as any).toString()}`),
+  customerHistory: (params: {
+    customer_name: string;
+    date_from?: string;
+    date_to?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const usp = new URLSearchParams();
+    usp.set('customer_name', params.customer_name);
+    if (params.date_from) usp.set('date_from', params.date_from);
+    if (params.date_to) usp.set('date_to', params.date_to);
+    if (params.page) usp.set('page', String(params.page));
+    if (params.page_size) usp.set('page_size', String(params.page_size));
+    return request(`/sales-reports/customer-history?${usp.toString()}`);
+  },
   productsRank: (params: any) =>
     request(`/sales-reports/products-rank?${new URLSearchParams(params as any).toString()}`),
   exportProductsRankXlsx: (params: any) =>
@@ -174,10 +212,12 @@ export const api = {
   clonePR: (id: number, payload: any) =>
     request(`/production-reports/${id}/clone`, { method: 'POST', body: JSON.stringify(payload) }),
   approvePR: (id: number) => request(`/production-reports/${id}/approve`, { method: 'POST' }),
-  // 後端 reject 目前是 query 參數版本：POST /{id}/reject?reason=xxx
+  // 後端 reject 需要 POST body 中的 reason 字段
   rejectPR: (id: number, reason?: string) => {
-    const qs = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-    return request(`/production-reports/${id}/reject${qs}`, { method: 'POST' });
+    return request(`/production-reports/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason || '' }),
+    });
   },
   summaryByEmployee: (params: any) => {
     const usp = new URLSearchParams(params);

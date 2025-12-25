@@ -230,6 +230,11 @@ class SalesOrder(Base):
     ship_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     logistics_no: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
+    # 付款紀錄
+    is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paid_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     items: Mapped[list["SalesOrderItem"]] = relationship(

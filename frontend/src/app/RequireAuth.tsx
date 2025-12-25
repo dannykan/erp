@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
-import { useAuth } from './auth';
+import { useAuth } from './useAuth';
 
 export default function RequireAuth({ children }: { children: JSX.Element }) {
   const { token, me, loading } = useAuth();

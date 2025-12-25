@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, time
 from typing import Optional
 import io
 from openpyxl import Workbook
@@ -60,6 +60,9 @@ def so_to_view(db: Session, so: SalesOrder) -> SOView:
         shipped_by_id=so.shipped_by_id,
         ship_note=so.ship_note,
         logistics_no=so.logistics_no,
+        is_paid=getattr(so, "is_paid", False),
+        paid_at=getattr(so, "paid_at", None),
+        paid_by_id=getattr(so, "paid_by_id", None),
         items=items,
     )
 
@@ -69,11 +72,14 @@ def list_sos(
     user=Depends(get_current_user),
 
     # filters
-    date_from: Optional[date] = Query(None),
-    date_to: Optional[date] = Query(None),
+    date_from: Optional[date] = Query(None),  # 保留兼容性，但优先使用 shipped_at_from
+    date_to: Optional[date] = Query(None),    # 保留兼容性，但优先使用 shipped_at_to
+    shipped_at_from: Optional[date] = Query(None, description="出貨時間起始日期"),
+    shipped_at_to: Optional[date] = Query(None, description="出貨時間結束日期"),
     customer_name_like: Optional[str] = Query(None),
     status: Optional[str] = Query(None),  # DRAFT/PICKED/SHIPPED
     product_id: Optional[int] = Query(None),
+    is_paid: Optional[bool] = Query(None, description="付款狀態篩選：True=已付款, False=未付款"),
 
     # paging
     page: int = Query(1, ge=1),
@@ -83,10 +89,15 @@ def list_sos(
 
     q = db.query(SalesOrder)
 
-    # 日期：優先用 doc_date（你們有填就用），沒有 doc_date 的單會被排除於區間
-    if date_from:
+    # 優先使用出貨時間篩選，如果沒有則使用 doc_date（向後兼容）
+    if shipped_at_from:
+        q = q.filter(SalesOrder.shipped_at >= datetime.combine(shipped_at_from, time.min))
+    elif date_from:
         q = q.filter(SalesOrder.doc_date >= date_from)
-    if date_to:
+    
+    if shipped_at_to:
+        q = q.filter(SalesOrder.shipped_at <= datetime.combine(shipped_at_to, time.max))
+    elif date_to:
         q = q.filter(SalesOrder.doc_date <= date_to)
 
     if customer_name_like:
@@ -97,6 +108,11 @@ def list_sos(
     if status:
         q = q.filter(SalesOrder.status == status)
 
+    # 付款狀態篩選：只對已出貨的單據有效
+    if is_paid is not None:
+        q = q.filter(SalesOrder.status == 'SHIPPED')
+        q = q.filter(SalesOrder.is_paid == is_paid)
+
     if product_id:
         q = q.join(SalesOrderItem, SalesOrderItem.sales_order_id == SalesOrder.id)\
              .filter(SalesOrderItem.product_id == product_id)\
@@ -104,8 +120,13 @@ def list_sos(
 
     total = q.count()
 
+    # 排序：優先按出貨時間倒序，沒有出貨時間的按建立時間倒序
     rows = (
-        q.order_by(desc(SalesOrder.id))
+        q.order_by(
+            desc(SalesOrder.shipped_at),
+            desc(SalesOrder.created_at),
+            desc(SalesOrder.id)
+        )
          .offset((page - 1) * page_size)
          .limit(page_size)
          .all()
@@ -131,18 +152,27 @@ def export_sos_xlsx(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 
-    date_from: Optional[date] = Query(None),
-    date_to: Optional[date] = Query(None),
+    date_from: Optional[date] = Query(None),  # 保留兼容性，但优先使用 shipped_at_from
+    date_to: Optional[date] = Query(None),    # 保留兼容性，但优先使用 shipped_at_to
+    shipped_at_from: Optional[date] = Query(None, description="出貨時間起始日期"),
+    shipped_at_to: Optional[date] = Query(None, description="出貨時間結束日期"),
     customer_name_like: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
     product_id: Optional[int] = Query(None),
+    is_paid: Optional[bool] = Query(None),
 ):
     # 這裡重用同一套 query 邏輯（跟 list_sos 一致）
     q = db.query(SalesOrder)
 
-    if date_from:
+    # 優先使用出貨時間篩選，如果沒有則使用 doc_date（向後兼容）
+    if shipped_at_from:
+        q = q.filter(SalesOrder.shipped_at >= datetime.combine(shipped_at_from, time.min))
+    elif date_from:
         q = q.filter(SalesOrder.doc_date >= date_from)
-    if date_to:
+    
+    if shipped_at_to:
+        q = q.filter(SalesOrder.shipped_at <= datetime.combine(shipped_at_to, time.max))
+    elif date_to:
         q = q.filter(SalesOrder.doc_date <= date_to)
 
     if customer_name_like:
@@ -153,12 +183,22 @@ def export_sos_xlsx(
     if status:
         q = q.filter(SalesOrder.status == status)
 
+    # 付款狀態篩選：只對已出貨的單據有效
+    if is_paid is not None:
+        q = q.filter(SalesOrder.status == 'SHIPPED')
+        q = q.filter(SalesOrder.is_paid == is_paid)
+
     if product_id:
         q = q.join(SalesOrderItem, SalesOrderItem.sales_order_id == SalesOrder.id)\
              .filter(SalesOrderItem.product_id == product_id)\
              .distinct()
 
-    sos = q.order_by(desc(SalesOrder.id)).all()
+    # 排序：優先按出貨時間倒序，沒有出貨時間的按建立時間倒序
+    sos = q.order_by(
+        desc(SalesOrder.shipped_at),
+        desc(SalesOrder.created_at),
+        desc(SalesOrder.id)
+    ).all()
 
     wb = Workbook()
     ws1 = wb.active
@@ -773,3 +813,261 @@ def ship_so(
         db.refresh(so)
         return so_to_view(db, so)
 
+@router.post("/{so_id}/confirm-payment", response_model=SOView)
+def confirm_payment(
+    so_id: int,
+    db: Session = Depends(get_db),
+    user=Depends(require_roles(Role.admin, Role.office, Role.supervisor)),
+):
+    """确认收款 - 只有已出貨的銷貨單可以確認收款"""
+    Base.metadata.create_all(bind=engine)
+    so = db.query(SalesOrder).filter(SalesOrder.id == so_id).first()
+    if not so:
+        raise HTTPException(404, "SO not found")
+    if so.status != "SHIPPED":
+        raise HTTPException(400, "Only SHIPPED orders can confirm payment")
+    if so.is_paid:
+        raise HTTPException(400, "Order is already paid")
+
+    so.is_paid = True
+    so.paid_at = datetime.utcnow()
+    so.paid_by_id = user.id
+
+    db.commit()
+    db.refresh(so)
+    return so_to_view(db, so)
+
+
+@router.get("/merged-unpaid")
+def get_merged_unpaid_sos(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    customer_name: str = Query(..., description="客戶名稱"),
+    shipped_at_from: Optional[date] = Query(None, description="出貨時間起始日期"),
+    shipped_at_to: Optional[date] = Query(None, description="出貨時間結束日期"),
+):
+    """獲取某個客戶未付款的銷貨單，合併品項"""
+    from collections import defaultdict
+    
+    # 查詢該客戶未付款的已出貨銷貨單
+    q = db.query(SalesOrder).filter(
+        SalesOrder.customer_name == customer_name,
+        SalesOrder.status == 'SHIPPED',
+        SalesOrder.is_paid == False
+    )
+    
+    if shipped_at_from:
+        q = q.filter(SalesOrder.shipped_at >= datetime.combine(shipped_at_from, time.min))
+    if shipped_at_to:
+        q = q.filter(SalesOrder.shipped_at <= datetime.combine(shipped_at_to, time.max))
+    
+    sos = q.order_by(SalesOrder.shipped_at).all()
+    
+    if not sos:
+        return {
+            "customer_name": customer_name,
+            "customer_address": None,
+            "customer_phone": None,
+            "date_from": shipped_at_from.isoformat() if shipped_at_from else None,
+            "date_to": shipped_at_to.isoformat() if shipped_at_to else None,
+            "source_so_ids": [],
+            "source_so_nos": [],
+            "items": [],
+            "total_amount": 0.0,
+            "total_qty": 0.0,
+        }
+    
+    # 獲取客戶資訊
+    customer = db.query(Customer).filter(Customer.name == customer_name).first()
+    customer_address = customer.address if customer else None
+    customer_phone = customer.phone if customer else None
+    
+    # 合併品項：按 product_id + mark 分組
+    merged_items: dict[tuple, dict] = defaultdict(lambda: {
+        "product_id": 0,
+        "product_sku": None,
+        "product_name": "",
+        "product_spec": None,
+        "total_qty": 0.0,
+        "unit": "",
+        "unit_price": 0.0,
+        "price_unit": "",
+        "total_amount": 0.0,
+        "source_so_nos": set(),
+        "mark": None,
+        "note": None,
+    })
+    
+    prod_map = {p.id: p for p in db.query(Product).all()}
+    source_so_ids = []
+    source_so_nos = []
+    
+    for so in sos:
+        source_so_ids.append(so.id)
+        source_so_nos.append(so.so_no)
+        
+        for item in so.items:
+            p = prod_map.get(item.product_id)
+            # 使用 (product_id, mark) 作為合併鍵
+            key = (item.product_id, item.mark or "")
+            
+            merged = merged_items[key]
+            if merged["product_id"] == 0:
+                merged["product_id"] = item.product_id
+                merged["product_sku"] = getattr(p, "sku", None) if p else None
+                merged["product_name"] = getattr(p, "name", f"#{item.product_id}") if p else f"#{item.product_id}"
+                merged["product_spec"] = getattr(p, "spec", None) if p else None
+                merged["unit"] = item.unit
+                merged["unit_price"] = float(getattr(item, "unit_price", 0) or 0)
+                merged["price_unit"] = getattr(item, "price_unit", "件") or "件"
+                merged["mark"] = item.mark
+                merged["note"] = item.note
+            
+            qty = float(item.qty)
+            merged["total_qty"] += qty
+            merged["total_amount"] += qty * merged["unit_price"]
+            merged["source_so_nos"].add(so.so_no)
+    
+    # 轉換為列表格式
+    items = []
+    for key, merged in merged_items.items():
+        items.append({
+            "product_id": merged["product_id"],
+            "product_sku": merged["product_sku"],
+            "product_name": merged["product_name"],
+            "product_spec": merged["product_spec"],
+            "total_qty": merged["total_qty"],
+            "unit": merged["unit"],
+            "unit_price": merged["unit_price"],
+            "price_unit": merged["price_unit"],
+            "total_amount": merged["total_amount"],
+            "source_so_nos": sorted(list(merged["source_so_nos"])),
+            "mark": merged["mark"],
+            "note": merged["note"],
+        })
+    
+    total_amount = sum(item["total_amount"] for item in items)
+    total_qty = sum(item["total_qty"] for item in items)
+    
+    return {
+        "customer_name": customer_name,
+        "customer_address": customer_address,
+        "customer_phone": customer_phone,
+        "date_from": shipped_at_from.isoformat() if shipped_at_from else None,
+        "date_to": shipped_at_to.isoformat() if shipped_at_to else None,
+        "source_so_ids": source_so_ids,
+        "source_so_nos": sorted(source_so_nos),
+        "items": items,
+        "total_amount": total_amount,
+        "total_qty": total_qty,
+    }
+
+@router.get("/merged-unpaid/print.pdf")
+def print_merged_unpaid_sos(
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    customer_name: str = Query(..., description="客戶名稱"),
+    shipped_at_from: Optional[date] = Query(None, description="出貨時間起始日期"),
+    shipped_at_to: Optional[date] = Query(None, description="出貨時間結束日期"),
+):
+    """列印合併的未付款銷貨單（陣列式格式）"""
+    from .pdf_docs import build_merged_unpaid_so_pdf
+    from collections import defaultdict
+    
+    q = db.query(SalesOrder).filter(
+        SalesOrder.customer_name == customer_name,
+        SalesOrder.status == 'SHIPPED',
+        SalesOrder.is_paid == False
+    )
+    
+    if shipped_at_from:
+        q = q.filter(SalesOrder.shipped_at >= datetime.combine(shipped_at_from, time.min))
+    if shipped_at_to:
+        q = q.filter(SalesOrder.shipped_at <= datetime.combine(shipped_at_to, time.max))
+    
+    sos = q.order_by(SalesOrder.shipped_at).all()
+    
+    if not sos:
+        raise HTTPException(404, "No unpaid orders found")
+    
+    customer = db.query(Customer).filter(Customer.name == customer_name).first()
+    customer_address = customer.address if customer else None
+    customer_phone = customer.phone if customer else None
+    
+    merged_items: dict[tuple, dict] = defaultdict(lambda: {
+        "product_id": 0,
+        "product_sku": None,
+        "product_name": "",
+        "product_spec": None,
+        "total_qty": 0.0,
+        "unit": "",
+        "unit_price": 0.0,
+        "price_unit": "",
+        "total_amount": 0.0,
+        "source_so_nos": set(),
+        "mark": None,
+        "note": None,
+    })
+    
+    prod_map = {p.id: p for p in db.query(Product).all()}
+    source_so_nos = []
+    
+    for so in sos:
+        source_so_nos.append(so.so_no)
+        for item in so.items:
+            p = prod_map.get(item.product_id)
+            key = (item.product_id, item.mark or "")
+            merged = merged_items[key]
+            if merged["product_id"] == 0:
+                merged["product_id"] = item.product_id
+                merged["product_sku"] = getattr(p, "sku", None) if p else None
+                merged["product_name"] = getattr(p, "name", f"#{item.product_id}") if p else f"#{item.product_id}"
+                merged["product_spec"] = getattr(p, "spec", None) if p else None
+                merged["unit"] = item.unit
+                merged["unit_price"] = float(getattr(item, "unit_price", 0) or 0)
+                merged["price_unit"] = getattr(item, "price_unit", "件") or "件"
+                merged["mark"] = item.mark
+                merged["note"] = item.note
+            qty = float(item.qty)
+            merged["total_qty"] += qty
+            merged["total_amount"] += qty * merged["unit_price"]
+            merged["source_so_nos"].add(so.so_no)
+    
+    items_for_pdf = []
+    total_amount = 0.0
+    total_qty = 0.0
+    for key, merged in merged_items.items():
+        items_for_pdf.append({
+            "product_sku": merged["product_sku"],
+            "product_name": merged["product_name"],
+            "product_spec": merged["product_spec"],
+            "qty": merged["total_qty"],
+            "unit": merged["unit"],
+            "unit_price": merged["unit_price"],
+            "price_unit": merged["price_unit"],
+            "case_qty": merged["total_qty"],
+            "pieces_per_case": getattr(prod_map.get(merged["product_id"]), "pieces_per_case", None) if merged["product_id"] else None,
+            "mark": merged["mark"],
+            "note": merged["note"],
+        })
+        total_amount += merged["total_amount"]
+        total_qty += merged["total_qty"]
+    
+    pdf_bytes = build_merged_unpaid_so_pdf(
+        customer_name=customer_name,
+        customer_address=customer_address,
+        customer_phone=customer_phone,
+        date_from=shipped_at_from.isoformat() if shipped_at_from else None,
+        date_to=shipped_at_to.isoformat() if shipped_at_to else None,
+        source_so_nos=sorted(source_so_nos),
+        items=items_for_pdf,
+        total_amount=total_amount,
+        total_qty=total_qty,
+    )
+    
+    filename = f"merged_unpaid_{customer_name}_{shipped_at_from.isoformat() if shipped_at_from else ''}_{shipped_at_to.isoformat() if shipped_at_to else ''}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

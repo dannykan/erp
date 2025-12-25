@@ -4,6 +4,7 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button } from 'antd';
 import { api } from '../app/api';
 import { useNavigate } from 'react-router-dom';
+import { useResponsive } from '../hooks/useResponsive';
 
 type PO = {
   id: number;
@@ -16,17 +17,20 @@ type PO = {
 export default function PurchaseOrders() {
   const actionRef = useRef<ActionType>();
   const nav = useNavigate();
+  const { isMobile } = useResponsive();
 
   const columns: ProColumns<PO>[] = [
-    { title: '進貨單號', dataIndex: 'po_no', copyable: true },
-    { title: '供應商', dataIndex: 'supplier_name' },
-    { title: '單據日期', dataIndex: 'doc_date' },
-    { title: '建立時間', dataIndex: 'created_at', search: false },
+    { title: '進貨單號', dataIndex: 'po_no', copyable: true, width: 150, fixed: 'left' },
+    { title: '供應商', dataIndex: 'supplier_name', width: 150 },
+    { title: '單據日期', dataIndex: 'doc_date', width: 120 },
+    { title: '建立時間', dataIndex: 'created_at', search: false, width: 180 },
     {
       title: '操作',
       valueType: 'option',
+      width: 100,
+      fixed: 'right',
       render: (_, r) => [
-        <Button key="open" type="link" onClick={() => nav(`/purchase-orders/${r.id}`)}>查看</Button>,
+        <Button key="open" type="link" size="small" onClick={() => nav(`/purchase-orders/${r.id}`)}>查看</Button>,
       ],
     },
   ];
@@ -37,7 +41,7 @@ export default function PurchaseOrders() {
       rowKey="id"
       headerTitle="進貨入庫（進貨單）"
       toolBarRender={() => [
-        <Button key="new" type="primary" onClick={() => nav('/purchase-orders/new')}>
+        <Button key="new" type="primary" size={isMobile ? 'small' : 'middle'} onClick={() => nav('/purchase-orders/new')}>
           建立進貨單
         </Button>,
       ]}
@@ -47,8 +51,15 @@ export default function PurchaseOrders() {
       }}
       columns={columns}
       search={false}
-      pagination={{ pageSize: 20 }}
-      scroll={{ x: 'max-content' }}
+      pagination={{ 
+        pageSize: 20,
+        showSizeChanger: !isMobile,
+        showQuickJumper: !isMobile,
+        showTotal: (total) => `共 ${total} 條`,
+        simple: isMobile,
+        size: isMobile ? 'small' : 'default',
+      }}
+      scroll={{ x: isMobile ? 600 : 800 }}
     />
   );
 }

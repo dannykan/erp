@@ -6,7 +6,7 @@ import { EditableProTable } from '@ant-design/pro-components';
 import type { ProColumns, ProFormInstance } from '@ant-design/pro-components';
 import { api } from '../app/api';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useAuth } from '../app/auth';
+import { useAuth } from '../app/useAuth';
 import CreateFGKitModal from '../components/CreateFGKitModal';
 import PickCommonItemsModal from '../components/PickCommonItemsModal';
 
@@ -331,7 +331,11 @@ export default function NewSalesOrder() {
           height: auto !important;
         }
       `}</style>
-      <Card title={isEditMode ? "編輯銷貨單" : "建立銷貨單"} loading={loading}>
+      <Card 
+        title={isEditMode ? "編輯銷貨單" : "建立銷貨單"} 
+        loading={loading}
+        extra={<Button onClick={() => nav('/sales-orders')}>返回</Button>}
+      >
       <ProForm
         formRef={formRef}
         onFinish={async (v) => {

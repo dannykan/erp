@@ -1,23 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { api } from './api';
-
-type Me = {
-  id: number;
-  username: string;
-  display_name?: string;
-  role: 'worker' | 'supervisor' | 'office' | 'admin' | string;
-  is_active?: boolean;
-};
-
-type AuthState = {
-  token: string | null;
-  me: Me | null;
-  loading: boolean;
-  refreshMe: () => Promise<void>;
-  logout: () => void;
-};
-
-const Ctx = createContext<AuthState | null>(null);
+import { AuthContext, type AuthState, type Me } from './authContext';
 
 let inflight: Promise<void> | null = null;
 
@@ -26,7 +9,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  async function refreshMe() {
+  const refreshMe = useCallback(async () => {
     if (inflight) return inflight;
     inflight = (async () => {
       const t = localStorage.getItem('token');
@@ -59,30 +42,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     })();
     return inflight;
-  }
+  }, []);
 
-  function logout() {
+  const logout = useCallback(() => {
     localStorage.removeItem('token');
     setToken(null);
     setMe(null);
-  }
+  }, []);
 
   useEffect(() => {
     refreshMe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshMe]);
 
   const value = useMemo(
     () => ({ token, me, loading, refreshMe, logout }),
-    [token, me, loading],
+    [token, me, loading, refreshMe, logout],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
-}
-
-export function useAuth() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error('useAuth must be used within AuthProvider');
-  return v;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { ProLayout } from '@ant-design/pro-components';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Button, App } from 'antd';
-import { useAuth } from './auth';
+import { Button, App, Space } from 'antd';
+import { useAuth } from './useAuth';
 
 const allRoutes = {
   path: '/',
@@ -21,6 +21,8 @@ const allRoutes = {
       routes: [
         { path: '/sales-reports/products-rank', name: '銷售報表 - 品項排行' },
         { path: '/sales-reports/product-customers', name: '銷售報表 - 品項→客戶' },
+        { path: '/sales-reports/customer-history', name: '客戶銷貨單歷史' },
+        { path: '/sales-orders/merged-unpaid', name: '合併未付款銷貨單' },
       ],
     },
     {
@@ -39,9 +41,14 @@ const allRoutes = {
 };
 
 function canSee(path: string, role: string) {
+  // 员工只能看到两个页面
+  if (role === 'worker') {
+    return path === '/production-reports/my' || path === '/production-reports/new';
+  }
+  
   const adminOnly = ['/users', '/production-reports/approval'];
   if (adminOnly.includes(path)) return role === 'admin' || role === 'supervisor';
-  const managementOnly = ['/production/kpi', '/sales-reports/products-rank', '/sales-reports/product-customers'];
+  const managementOnly = ['/production/kpi', '/sales-reports/products-rank', '/sales-reports/product-customers', '/sales-reports/customer-history', '/sales-orders/merged-unpaid'];
   if (managementOnly.includes(path)) return role === 'admin' || role === 'supervisor' || role === 'office';
   return true;
 }
@@ -57,6 +64,16 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const { me, logout } = useAuth();
   const role = me?.role || 'worker';
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const routes = useMemo(() => {
     return {
@@ -73,17 +90,31 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         route={routes as any}
         menuItemRender={(item, dom) => <Link to={item.path || '/'}>{dom}</Link>}
         rightContentRender={() => (
-          <Button
-            onClick={() => {
-              logout();
-              navigate('/login');
-            }}
-          >
-            登出
-          </Button>
+          <Space wrap size="small">
+            {!isMobile && (
+              <span>{me?.display_name || me?.username || ''}</span>
+            )}
+            <Button
+              size={isMobile ? 'small' : 'middle'}
+              onClick={() => {
+                logout();
+                navigate('/login');
+              }}
+            >
+              登出
+            </Button>
+          </Space>
         )}
+        breakpoints={{
+          xs: 480,
+          sm: 576,
+          md: 768,
+          lg: 992,
+          xl: 1200,
+          xxl: 1600,
+        }}
       >
-        <div style={{ padding: 12 }}>{children}</div>
+        <div style={{ padding: isMobile ? '8px' : '12px' }}>{children}</div>
       </ProLayout>
     </App>
   );

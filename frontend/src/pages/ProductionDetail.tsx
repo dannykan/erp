@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Table, Button, Space, Tag, Modal, Input, message } from 'antd';
 import { api } from '../app/api';
 import { useParams, useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export default function ProductionDetail() {
   const { id } = useParams();
@@ -12,6 +18,15 @@ export default function ProductionDetail() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [userMap, setUserMap] = useState<Record<string, string>>({});
+
+  // 格式化日期時間為 YYYY/MM/DD HH:mm:ss（UTC+8）
+  function formatDateTime(dateStr: string | null | undefined): string {
+    if (!dateStr) return '-';
+    // 將 UTC 時間轉換為 UTC+8（Asia/Taipei）
+    const date = dayjs.utc(dateStr).tz('Asia/Taipei');
+    if (!date.isValid()) return dateStr;
+    return date.format('YYYY/MM/DD HH:mm:ss');
+  }
 
   async function reload() {
     const data = await api.getPR(prId);
@@ -38,7 +53,7 @@ export default function ProductionDetail() {
       <Card
         title={`生產回報：${pr.pr_no}`}
         extra={
-          <Space>
+          <Space wrap size="small" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             <Button onClick={() => nav(-1)}>返回</Button>
 
             {/* 列印：你想要 PDF 我也能幫你加 endpoint，先給占位 */}
@@ -59,8 +74,10 @@ export default function ProductionDetail() {
                       await api.approvePR(pr.id);
                       message.success('已核准並入倉庫庫存');
                       await reload();
-                    } catch {
-                      message.error('核准失敗');
+                    } catch (e: any) {
+                      console.error('Approve PR error:', e);
+                      const errorMsg = e?.message || '核准失敗';
+                      message.error(`核准失敗：${errorMsg}`);
                     }
                   }}
                 >
@@ -82,7 +99,7 @@ export default function ProductionDetail() {
         }
       >
         <Descriptions bordered size="small" column={2}>
-          <Descriptions.Item label="回報日期">{pr.report_date}</Descriptions.Item>
+          <Descriptions.Item label="回報日期">{formatDateTime(pr.created_at)}</Descriptions.Item>
           <Descriptions.Item label="狀態">{statusTag}</Descriptions.Item>
           <Descriptions.Item label="回報人">
             {userMap[String(pr.reported_by_user_id)] || `ID ${pr.reported_by_user_id}`}
@@ -90,7 +107,7 @@ export default function ProductionDetail() {
           <Descriptions.Item label="核准人">
             {pr.approved_by_user_id ? (userMap[String(pr.approved_by_user_id)] || `ID ${pr.approved_by_user_id}`) : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="核准時間" span={2}>{pr.approved_at ?? '-'}</Descriptions.Item>
+          <Descriptions.Item label="核准時間" span={2}>{formatDateTime(pr.approved_at)}</Descriptions.Item>
           <Descriptions.Item label="備註" span={2}>{pr.note || '-'}</Descriptions.Item>
         </Descriptions>
 

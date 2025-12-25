@@ -42,6 +42,27 @@ export default function BOM() {
     loadData();
   }, [fgProductId]);
 
+  // 從產品名稱中提取最後的數字X數字模式（例如：100X27），計算乘積
+  const calculateQtyFromProductName = (productName: string): number | null => {
+    if (!productName) return null;
+    
+    // 匹配所有的 數字X數字 模式（不區分大小寫，支持 X, x, ×）
+    // 例如：100X27, 100x27, 50×70 等
+    const matches = productName.matchAll(/(\d+)\s*[Xx×]\s*(\d+)/g);
+    const allMatches = Array.from(matches);
+    
+    // 取最後一個匹配（如果有多個）
+    if (allMatches.length > 0) {
+      const lastMatch = allMatches[allMatches.length - 1];
+      const num1 = parseInt(lastMatch[1], 10);
+      const num2 = parseInt(lastMatch[2], 10);
+      if (!isNaN(num1) && !isNaN(num2)) {
+        return num1 * num2;
+      }
+    }
+    return null;
+  };
+
   const loadData = async () => {
     if (!fgProductId) return;
     setLoading(true);
@@ -178,6 +199,15 @@ export default function BOM() {
                             value: p.id,
                             label: `${p.sku || ''} ${p.name}`.trim(),
                           }))}
+                          onChange={(value) => {
+                            // 當選擇原料時，自動計算並填充每件用量
+                            if (fgProduct && value) {
+                              const calculatedQty = calculateQtyFromProductName(fgProduct.name);
+                              if (calculatedQty !== null) {
+                                form.setFieldValue(['items', field.name, 'qty_per_fg_unit'], calculatedQty);
+                              }
+                            }
+                          }}
                         />
                       </Form.Item>
                       <Form.Item

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, text, literal_column
 from datetime import date
 from .db import get_db, engine, Base
 from .deps import get_current_user
@@ -26,12 +26,15 @@ def summary_by_employee(
 ):
     Base.metadata.create_all(bind=engine)
 
-    bucket_sql = bucket_expr_sqlite(bucket)
-    bucket_expr = text(bucket_sql)
+    bucket_sql_template = bucket_expr_sqlite(bucket)
+    # 替換 report_date 為 production_reports.report_date 以避免歧義
+    bucket_sql = bucket_sql_template.replace("report_date", "production_reports.report_date")
+    # 使用 literal_column 代替 text，因為 literal_column 支持 .label()
+    bucket_expr = literal_column(bucket_sql).label("bucket")
     # APPROVED 才算正式生產（你也可讓 status=ALL）
     q = (
         db.query(
-            bucket_expr.label("bucket"),
+            bucket_expr,
             ProductionReport.reported_by_user_id.label("emp_id"),
             func.sum(ProductionReportItem.qty).label("total_qty"),
         )
@@ -39,7 +42,9 @@ def summary_by_employee(
         .filter(ProductionReport.report_date >= from_date, ProductionReport.report_date <= to_date)
     )
     q = status_filter(q, status)
-    q = q.group_by(bucket_expr, ProductionReport.reported_by_user_id).order_by(bucket_expr)
+    # 在 group_by 和 order_by 中使用相同的 literal_column 表達式
+    bucket_expr_for_group = literal_column(bucket_sql)
+    q = q.group_by(bucket_expr_for_group, ProductionReport.reported_by_user_id).order_by(bucket_expr_for_group)
 
     rows = []
     for r in q.all():
@@ -61,12 +66,15 @@ def summary_by_product(
     user=Depends(get_current_user),
 ):
     Base.metadata.create_all(bind=engine)
-    bucket_sql = bucket_expr_sqlite(bucket)
-    bucket_expr = text(bucket_sql)
+    bucket_sql_template = bucket_expr_sqlite(bucket)
+    # 替換 report_date 為 production_reports.report_date 以避免歧義
+    bucket_sql = bucket_sql_template.replace("report_date", "production_reports.report_date")
+    # 使用 literal_column 代替 text，因為 literal_column 支持 .label()
+    bucket_expr = literal_column(bucket_sql).label("bucket")
 
     q = (
         db.query(
-            bucket_expr.label("bucket"),
+            bucket_expr,
             ProductionReportItem.product_id.label("product_id"),
             func.sum(ProductionReportItem.qty).label("total_qty"),
         )
@@ -74,7 +82,9 @@ def summary_by_product(
         .filter(ProductionReport.report_date >= from_date, ProductionReport.report_date <= to_date)
     )
     q = status_filter(q, status)
-    q = q.group_by(bucket_expr, ProductionReportItem.product_id).order_by(bucket_expr)
+    # 在 group_by 和 order_by 中使用相同的 literal_column 表達式
+    bucket_expr_for_group = literal_column(bucket_sql)
+    q = q.group_by(bucket_expr_for_group, ProductionReportItem.product_id).order_by(bucket_expr_for_group)
 
     prod_map = {p.id: p for p in db.query(Product).all()}
     rows = []
@@ -99,15 +109,18 @@ def summary_by_product_spec(
     user=Depends(get_current_user),
 ):
     Base.metadata.create_all(bind=engine)
-    bucket_sql = bucket_expr_sqlite(bucket)
-    bucket_expr = text(bucket_sql)
+    bucket_sql_template = bucket_expr_sqlite(bucket)
+    # 替換 report_date 為 production_reports.report_date 以避免歧義
+    bucket_sql = bucket_sql_template.replace("report_date", "production_reports.report_date")
+    # 使用 literal_column 代替 text，因為 literal_column 支持 .label()
+    bucket_expr = literal_column(bucket_sql).label("bucket")
 
     # spec_key = item.spec_text 若空，fallback product.spec
     # SQLite: 用 COALESCE
     spec_key_expr = func.coalesce(ProductionReportItem.spec_text, Product.spec, text("''"))
     q = (
         db.query(
-            bucket_expr.label("bucket"),
+            bucket_expr,
             ProductionReportItem.product_id.label("product_id"),
             spec_key_expr.label("spec_key"),
             func.sum(ProductionReportItem.qty).label("total_qty"),
@@ -117,7 +130,9 @@ def summary_by_product_spec(
         .filter(ProductionReport.report_date >= from_date, ProductionReport.report_date <= to_date)
     )
     q = status_filter(q, status)
-    q = q.group_by(bucket_expr, ProductionReportItem.product_id, spec_key_expr).order_by(bucket_expr)
+    # 在 group_by 和 order_by 中使用相同的 literal_column 表達式
+    bucket_expr_for_group = literal_column(bucket_sql)
+    q = q.group_by(bucket_expr_for_group, ProductionReportItem.product_id, spec_key_expr).order_by(bucket_expr_for_group)
 
     rows = []
     for r in q.all():

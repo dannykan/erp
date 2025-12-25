@@ -125,6 +125,7 @@ export default function SalesReportProductCustomers() {
       }}
       search={{
         labelWidth: 80,
+        defaultCollapsed: true,
         optionRender: (searchConfig, formProps, dom) => [
           ...dom,
           <Button

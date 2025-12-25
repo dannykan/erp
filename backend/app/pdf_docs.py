@@ -267,3 +267,152 @@ def build_so_shipping_pdf(
     c.save()
     return buf.getvalue()
 
+def build_merged_unpaid_so_pdf(
+    customer_name: str,
+    customer_address: str | None,
+    customer_phone: str | None,
+    date_from: str | None,
+    date_to: str | None,
+    source_so_nos: list[str],
+    items: list[dict],
+    total_amount: float,
+    total_qty: float,
+) -> bytes:
+    """合併未付款銷貨單 PDF - 陣列式印表機格式"""
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    w, h = A4
+
+    # 使用等寬字體以確保固定欄位寬度
+    c.setFont("Courier-Bold", 14)
+    c.drawString(20*mm, h-20*mm, "合併未付款銷貨單")
+    
+    # 客戶資訊區塊（固定位置）
+    c.setFont("Courier", 10)
+    y = h-35*mm
+    c.drawString(20*mm, y, f"客戶名稱：{customer_name}")
+    y -= 6*mm
+    c.drawString(20*mm, y, f"送貨地址：{customer_address or '-'}")
+    y -= 6*mm
+    c.drawString(20*mm, y, f"聯繫電話：{customer_phone or '-'}")
+    y -= 6*mm
+    date_range_str = ""
+    if date_from and date_to:
+        date_range_str = f"{date_from} 至 {date_to}"
+    elif date_from:
+        date_range_str = f"{date_from} 起"
+    elif date_to:
+        date_range_str = f"至 {date_to}"
+    else:
+        date_range_str = "全部"
+    c.drawString(20*mm, y, f"出貨時間：{date_range_str}")
+    y -= 6*mm
+    c.drawString(20*mm, y, f"來源單號：{', '.join(source_so_nos[:5])}{'...' if len(source_so_nos) > 5 else ''}")
+
+    y -= 10*mm
+    # 表頭（按照圖二格式：項、品名規格、MARK、報價單位、件入數(箱入數)、件數(箱數)、單價、小計、備註）
+    c.setFont("Courier-Bold", 9)
+    header_x = 15*mm
+    col_widths = [8*mm, 60*mm, 25*mm, 20*mm, 25*mm, 20*mm, 25*mm, 25*mm, 30*mm]
+    c.drawString(header_x, y, "項")
+    c.drawString(header_x + col_widths[0], y, "品名規格")
+    c.drawString(header_x + col_widths[0] + col_widths[1], y, "MARK")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2], y, "報價單位")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3], y, "件入數(箱入數)")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4], y, "件數(箱數)")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5], y, "單價")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, "小計")
+    c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, "備註")
+
+    y -= 8*mm
+    c.setFont("Courier", 9)
+    
+    price_unit_used = None
+    
+    # 明細（固定欄位寬度對齊）
+    for idx, it in enumerate(items, 1):
+        unit_price = float(it.get('unit_price', 0) or 0)
+        price_unit = it.get('price_unit', '件') or '件'
+        if not price_unit_used:
+            price_unit_used = price_unit
+        case_qty = float(it.get('case_qty', it.get('qty', 0)) or 0)
+        subtotal = case_qty * unit_price
+        
+        product_sku = it.get('product_sku', '') or ''
+        product_name = it.get('product_name', '') or ''
+        product_spec = it.get('product_spec', '') or ''
+        # 品名規格：貨號 + 產品名稱 + 規格
+        product_full = ' '.join(filter(None, [product_sku, product_name, product_spec]))[:50]
+        mark = it.get('mark', '') or ''
+        note_text = it.get('note', '') or ''
+        
+        # 固定欄位寬度對齊
+        item_x = header_x
+        c.drawString(item_x, y, str(idx))
+        c.drawString(item_x + col_widths[0], y, product_full[:28])
+        c.drawString(item_x + col_widths[0] + col_widths[1], y, mark[:10])
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2], y, price_unit[:8])
+        pieces_per_case = it.get('pieces_per_case', '') or ''
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3], y, str(pieces_per_case) if pieces_per_case else '-')
+        # 件數(箱數) 使用粗體
+        c.setFont("Courier-Bold", 9)
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4], y, str(int(case_qty)))
+        c.setFont("Courier", 9)
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5], y, f"NT${unit_price:.2f}")
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, f"NT${subtotal:.2f}")
+        c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, note_text[:15])
+        
+        y -= 6*mm
+        if y < 60*mm:
+            c.showPage()
+            y = h-20*mm
+            # 新頁面重複表頭
+            c.setFont("Courier-Bold", 9)
+            c.drawString(header_x, y, "項")
+            c.drawString(header_x + col_widths[0], y, "品名規格")
+            c.drawString(header_x + col_widths[0] + col_widths[1], y, "MARK")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2], y, "報價單位")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3], y, "件入數(箱入數)")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4], y, "件數(箱數)")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5], y, "單價")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, "小計")
+            c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, "備註")
+            y -= 8*mm
+            c.setFont("Courier", 9)
+
+    # 底部總計
+    y -= 8*mm
+    c.setFont("Courier-Bold", 9)
+    c.drawString(header_x, y, f"總件數：{int(total_qty)}{price_unit_used or '件'}")
+    c.drawRightString(w - 20*mm, y, f"銷貨總金額：NT${total_amount:.2f}")
+    
+    # 顯示來源單號（如果空間足夠）
+    y -= 10*mm
+    c.setFont("Courier", 8)
+    so_nos_text = f"來源單號：{', '.join(source_so_nos)}"
+    # 如果單號太多，分行顯示
+    if len(so_nos_text) > 100:
+        lines = []
+        current_line = "來源單號："
+        for so_no in source_so_nos:
+            if len(current_line) + len(so_no) + 2 > 100:
+                lines.append(current_line)
+                current_line = so_no
+            else:
+                if current_line != "來源單號：":
+                    current_line += ", "
+                current_line += so_no
+        if current_line:
+            lines.append(current_line)
+        for line in lines:
+            c.drawString(20*mm, y, line[:100])
+            y -= 5*mm
+            if y < 30*mm:
+                break
+    else:
+        c.drawString(20*mm, y, so_nos_text[:100])
+
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+

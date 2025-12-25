@@ -91,6 +91,7 @@ export default function SalesReportProductsRank() {
       }}
       search={{
         labelWidth: 80,
+        defaultCollapsed: true,
         optionRender: (searchConfig, formProps, dom) => [
           ...dom,
           <Button

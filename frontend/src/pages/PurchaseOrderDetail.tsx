@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Table, Button, Space, message } from 'antd';
 import { api } from '../app/api';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
   const poId = Number(id);
+  const nav = useNavigate();
   const [po, setPo] = useState<any>(null);
 
   useEffect(() => {
@@ -18,7 +19,8 @@ export default function PurchaseOrderDetail() {
     <Card
       title={`進貨單：${po.po_no}`}
       extra={
-        <Space wrap>
+        <Space wrap size="small" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <Button onClick={() => nav(-1)}>返回</Button>
           <Button
             onClick={async () => {
               try {

@@ -3,8 +3,21 @@ import { ProTable } from '@ant-design/pro-components';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button, Space, DatePicker, Select, message } from 'antd';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { api } from '../app/api';
 import { useNavigate } from 'react-router-dom';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+// 格式化日期時間為 YYYY/MM/DD HH:mm:ss（UTC+8）
+function formatDateTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return '-';
+  const date = dayjs.utc(dateStr).tz('Asia/Taipei');
+  if (!date.isValid()) return dateStr;
+  return date.format('YYYY/MM/DD HH:mm:ss');
+}
 
 const { RangePicker } = DatePicker;
 
@@ -16,6 +29,7 @@ type PR = {
   reported_by_user_id: number;
   approved_by_user_id?: number;
   approved_at?: string;
+  created_at?: string;
   items: any[];
 };
 
@@ -53,7 +67,15 @@ export default function ProductionRecords() {
 
   const columns: ProColumns<PR>[] = [
     { title: '回報單號', dataIndex: 'pr_no', copyable: true },
-    { title: '日期', dataIndex: 'report_date', width: 120 },
+    {
+      title: '日期',
+      dataIndex: 'report_date',
+      width: 180,
+      render: (_, r) => {
+        // 使用 created_at 顯示回報日期+時間
+        return formatDateTime(r.created_at);
+      },
+    },
     { title: '狀態', dataIndex: 'status', width: 90 },
     {
       title: '回報人',

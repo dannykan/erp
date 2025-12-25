@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Table, Button, Space, message, Tag, Modal, Input, Checkbox } from 'antd';
 import { api } from '../app/api';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useResponsive } from '../hooks/useResponsive';
 
 export default function SalesOrderDetail() {
   const { id } = useParams();
   const soId = Number(id);
+  const nav = useNavigate();
+  const { isMobile } = useResponsive();
   const [so, setSo] = useState<any>(null);
   const [stockMap, setStockMap] = useState<Record<string, number>>({});
   const [shipModalOpen, setShipModalOpen] = useState(false);
@@ -144,14 +147,25 @@ export default function SalesOrderDetail() {
     }
   };
 
+  const handleConfirmPayment = async () => {
+    try {
+      await api.confirmPayment(soId);
+      message.success('已確認收款');
+      reload();
+    } catch (err: any) {
+      message.error(err.message || '確認收款失敗');
+    }
+  };
+
   return (
     <>
       <Card
         title={`銷貨單：${so.so_no}`}
         extra={
-          <Space wrap size="small">
+          <Space wrap size={isMobile ? 'small' : 'middle'} direction={isMobile ? 'vertical' : 'horizontal'} style={{ width: isMobile ? '100%' : 'auto' }}>
+            <Button size={isMobile ? 'small' : 'middle'} onClick={() => nav(-1)}>返回</Button>
             {so.status === 'DRAFT' && (
-              <Button type="primary" onClick={handlePick}>
+              <Button type="primary" size={isMobile ? 'small' : 'middle'} onClick={handlePick}>
                 完成揀貨
               </Button>
             )}
@@ -160,6 +174,7 @@ export default function SalesOrderDetail() {
                 <Button
                   type="primary"
                   danger
+                  size={isMobile ? 'small' : 'middle'}
                   onClick={() => setShipModalOpen(true)}
                 >
                   確認出貨
@@ -170,16 +185,29 @@ export default function SalesOrderDetail() {
               </>
             )}
             {so.status === 'PICKED' && (
-              <Button onClick={handlePrintPicklist}>
+              <Button size={isMobile ? 'small' : 'middle'} onClick={handlePrintPicklist}>
                 列印揀貨單
               </Button>
             )}
             {so.status === 'SHIPPED' && (
-              <Button onClick={handlePrintShipping}>
-                列印出貨單
-              </Button>
+              <>
+                <Button size={isMobile ? 'small' : 'middle'} onClick={handlePrintShipping}>
+                  列印出貨單
+                </Button>
+                {!so.is_paid && (
+                  <Button
+                    type="primary"
+                    size={isMobile ? 'small' : 'middle'}
+                    onClick={handleConfirmPayment}
+                    style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
+                  >
+                    確認收款
+                  </Button>
+                )}
+              </>
             )}
             <Button
+              size={isMobile ? 'small' : 'middle'}
               onClick={async () => {
                 try {
                   const blob = await api.printSO(soId);
@@ -208,6 +236,25 @@ export default function SalesOrderDetail() {
         <Descriptions.Item label="日期">
           {so.doc_date ? (typeof so.doc_date === 'string' ? so.doc_date.split('T')[0] : so.doc_date) : '-'}
         </Descriptions.Item>
+        <Descriptions.Item label="狀態">
+          <Tag color={statusMap[so.status]?.color || 'default'}>
+            {statusMap[so.status]?.text || so.status}
+          </Tag>
+        </Descriptions.Item>
+        {so.status === 'SHIPPED' && (
+          <Descriptions.Item label="付款狀態">
+            {so.is_paid ? (
+              <Tag color="green">已付款</Tag>
+            ) : (
+              <Tag color="orange">未付款</Tag>
+            )}
+            {so.is_paid && so.paid_at && (
+              <span style={{ marginLeft: 8, color: '#666', fontSize: '12px' }}>
+                ({new Date(so.paid_at).toLocaleString('zh-TW')})
+              </span>
+            )}
+          </Descriptions.Item>
+        )}
       </Descriptions>
 
       <div style={{ height: 12 }} />
@@ -216,7 +263,8 @@ export default function SalesOrderDetail() {
         rowKey="id"
         dataSource={so.items}
         pagination={false}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: isMobile ? 800 : 'max-content' }}
+        size={isMobile ? 'small' : 'middle'}
         columns={[
           {
             title: '項',

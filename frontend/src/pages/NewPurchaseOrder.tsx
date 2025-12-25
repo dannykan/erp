@@ -141,7 +141,10 @@ export default function NewPurchaseOrder() {
   ];
 
   return (
-    <Card title="建立進貨單">
+    <Card 
+      title="建立進貨單"
+      extra={<Button onClick={() => nav('/purchase-orders')}>返回</Button>}
+    >
       <ProForm
         onFinish={async (v) => {
           if (!items.length) return message.error('請至少一筆明細'), false;

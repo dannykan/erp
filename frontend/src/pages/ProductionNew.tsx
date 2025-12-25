@@ -17,10 +17,10 @@ function getProductUnit(p?: Product): string {
 type Item = {
   id: number;
   product_id?: number;
-  spec_text?: string;
+  spec_text?: string | null;
   qty: number;
   unit?: string;
-  note?: string;
+  note?: string | null;
 };
 
 export default function ProductionNew() {
@@ -67,6 +67,18 @@ export default function ProductionNew() {
     return m;
   }, [fgProducts]);
 
+  // 單位選項
+  const unitOptions = useMemo(() => {
+    const units = new Set<string>();
+    products.forEach(p => {
+      if (p.base_unit) units.add(p.base_unit);
+      if (p.unit) units.add(p.unit);
+    });
+    // 添加常見的單位
+    ['件', '包', '箱', '盒', '袋', '組', '打', '個', '雙'].forEach(u => units.add(u));
+    return Array.from(units).sort().map(u => ({ label: u, value: u }));
+  }, [products]);
+
   function toRowsFromPR(pr: any) {
     const rows = (pr.items || []).map((it: any) => {
       const p = productMap.get(it.product_id);
@@ -75,7 +87,7 @@ export default function ProductionNew() {
         product_id: it.product_id,
         spec_text: it.spec_text,
         qty: Number(it.qty || 0) > 0 ? it.qty : 1,
-        unit: it.unit || getProductUnit(p),
+        unit: it.unit || '件',
         note: it.note,
       };
     });
@@ -86,22 +98,35 @@ export default function ProductionNew() {
     setItems((prev) => prev.map((r) => ({ ...r, qty: 0 })));
   }
 
+  // 格式化日期：處理 dayjs 對象或字符串
+  function formatDate(date: any): string {
+    if (!date) return dayjs().format('YYYY-MM-DD');
+    if (typeof date === 'string') return date;
+    if (date.format && typeof date.format === 'function') {
+      return date.format('YYYY-MM-DD');
+    }
+    return dayjs(date).format('YYYY-MM-DD');
+  }
+
   const columns: ProColumns<Item>[] = [
     {
-      title: '商品',
+      title: '品項',
       dataIndex: 'product_id',
       valueType: 'select',
       fieldProps: { options: productOptions, showSearch: true, optionFilterProp: 'label' },
       width: 360,
     },
-    {
-      title: '規格（今日）',
-      dataIndex: 'spec_text',
-      tooltip: '可留空；若今日實際規格與商品預設 spec 不同可填',
-      width: 220,
-    },
     { title: '數量', dataIndex: 'qty', valueType: 'digit', width: 110 },
-    { title: '單位', dataIndex: 'unit', width: 90 },
+    {
+      title: '單位',
+      dataIndex: 'unit',
+      valueType: 'select',
+      fieldProps: {
+        options: unitOptions,
+        showSearch: true,
+      },
+      width: 120,
+    },
     { title: '備註', dataIndex: 'note' },
     { title: '操作', valueType: 'option', width: 80 },
   ];
@@ -118,13 +143,12 @@ export default function ProductionNew() {
 
   // A2-2: 異常提示計算
   const duplicates = (() => {
-    const seen = new Set<string>();
-    const dups: string[] = [];
+    const seen = new Set<number>();
+    const dups: number[] = [];
     for (const it of items) {
       if (!it.product_id) continue;
-      const k = `${it.product_id}::${(it.spec_text || '').trim()}`;
-      if (seen.has(k)) dups.push(k);
-      else seen.add(k);
+      if (seen.has(it.product_id)) dups.push(it.product_id);
+      else seen.add(it.product_id);
     }
     return dups.length;
   })();
@@ -132,7 +156,10 @@ export default function ProductionNew() {
   const hugeQty = items.some((it) => Number(it.qty || 0) >= 5000);
 
   return (
-    <Card title="新增生產回報（員工填寫）">
+    <Card 
+      title="新增生產回報（員工填寫）"
+      extra={<Button onClick={() => nav('/production-reports/my')}>返回</Button>}
+    >
       <div style={{ marginBottom: 12 }}>
         <Space wrap>
           <Button
@@ -142,7 +169,7 @@ export default function ProductionNew() {
                 setLoadingClone(true);
                 // 以你選的回報日期為 before（複製「最近一次 <= 該日」）
                 const formValues = formRef.current?.getFieldsValue();
-                const before = formValues?.report_date?.format('YYYY-MM-DD') || dayjs().format('YYYY-MM-DD');
+                const before = formatDate(formValues?.report_date);
                 const last = await api.lastPR({ mine: true, before });
                 const rows = toRowsFromPR(last);
                 setItems(rows);
@@ -162,14 +189,12 @@ export default function ProductionNew() {
 
           <Button
             onClick={() => {
-              const map = new Map<string, any>();
+              const map = new Map<number, any>();
               for (const it of items) {
                 if (!it.product_id) continue;
-                const spec = (it.spec_text || '').trim();
-                const k = `${it.product_id}::${spec}`;
-                if (!map.has(k)) map.set(k, { ...it, id: Date.now() + Math.random() });
+                if (!map.has(it.product_id)) map.set(it.product_id, { ...it, id: Date.now() + Math.random() });
                 else {
-                  const cur = map.get(k);
+                  const cur = map.get(it.product_id);
                   cur.qty = Number(cur.qty || 0) + Number(it.qty || 0);
                   cur.unit = cur.unit || it.unit;
                   cur.note = [cur.note, it.note].filter(Boolean).join('; ');
@@ -181,7 +206,7 @@ export default function ProductionNew() {
               const final = [...merged, ...withoutProduct];
               setItems(final);
               setEditableKeys(final.map((r) => r.id));
-              message.success('已合併重複品項/規格');
+              message.success('已合併重複品項');
             }}
           >
             合併重複列
@@ -223,7 +248,7 @@ export default function ProductionNew() {
                 return;
               }
 
-              const row = { id: Date.now(), product_id: found.id, spec_text: '', qty: 0, unit: getProductUnit(found), note: '' };
+              const row = { id: Date.now(), product_id: found.id, spec_text: null, qty: 0, unit: '件', note: null };
               const next = [...items, row];
               setItems(next);
               setEditableKeys([...editableKeys, row.id]);
@@ -235,9 +260,9 @@ export default function ProductionNew() {
 
       {(duplicates > 0 || hugeQty) && (
         <div style={{ marginBottom: 12 }}>
-          {duplicates > 0 && (
+            {duplicates > 0 && (
             <Alert
-              message="有重複品項/規格，建議合併"
+              message="有重複品項，建議合併"
               type="warning"
               showIcon
               style={{ marginBottom: 8 }}
@@ -272,18 +297,23 @@ export default function ProductionNew() {
 
           try {
             await api.createPR({
-              report_date: v.report_date?.format('YYYY-MM-DD'),
+              report_date: formatDate(v.report_date),
               note: v.note,
               items: items.map(({ id, ...rest }) => ({
-                ...rest,
+                product_id: rest.product_id,
+                spec_text: rest.spec_text || null,
                 qty: Number(rest.qty),
+                unit: rest.unit || '件',
+                note: rest.note || null,
               })),
             });
             message.success('已送出，等待廠長確認');
             nav('/production-reports/my');
             return true;
-          } catch {
-            message.error('送出失敗');
+          } catch (e: any) {
+            console.error('Create PR error:', e);
+            const errorMsg = e?.message || '送出失敗';
+            message.error(`送出失敗：${errorMsg}`);
             return false;
           }
         }}
@@ -297,7 +327,6 @@ export default function ProductionNew() {
         }}
       >
         <ProFormDatePicker name="report_date" label="回報日期" rules={[{ required: true }]} />
-        <ProFormTextArea name="note" label="備註（可空）" fieldProps={{ rows: 3 }} />
 
         <Divider />
 
@@ -305,18 +334,11 @@ export default function ProductionNew() {
           rowKey="id"
           headerTitle="今日生產明細"
           value={items}
-          onChange={(v) => {
-            // 自動帶出 unit：選了商品就補 unit（若使用者沒填），優先使用 base_unit
-            const next = v.map((row) => {
-              const p = productMap.get(row.product_id as number);
-              return { ...row, unit: row.unit || getProductUnit(p) };
-            });
-            setItems(next);
-          }}
+          onChange={setItems}
           columns={columns}
           recordCreatorProps={{
             position: 'bottom',
-            record: () => ({ id: Date.now(), qty: 1, unit: '個' }),
+            record: () => ({ id: Date.now(), qty: 1, unit: '件', spec_text: null, note: null }),
           }}
           editable={{
             type: 'multiple',
@@ -324,6 +346,8 @@ export default function ProductionNew() {
             onChange: setEditableKeys,
           }}
         />
+
+        <ProFormTextArea name="note" label="備註（可空）" fieldProps={{ rows: 3 }} />
       </ProForm>
     </Card>
   );

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import AppLayout from './layout';
 import RequireAuth from './RequireAuth';
 import RequireRole from './RequireRole';
+import { useAuth } from './useAuth';
 
 import Login from '../pages/Login';
 // 架構瘦身：移除 Order/WorkOrder/Factory 相關頁面
@@ -35,6 +36,9 @@ import Users from '../pages/Users';
 import BOM from '../pages/BOM';
 import SalesReportProductsRank from '../pages/SalesReportProductsRank';
 import SalesReportProductCustomers from '../pages/SalesReportProductCustomers';
+import CustomerSalesHistory from '../pages/CustomerSalesHistory';
+import MergedUnpaidSOs from '../pages/MergedUnpaidSOs';
+import DefaultRedirect from './DefaultRedirect';
 
 export default function App() {
   return (
@@ -47,7 +51,9 @@ export default function App() {
         path="/products"
         element={
           <RequireAuth>
-            <AppLayout><Products /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><Products /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -66,7 +72,9 @@ export default function App() {
         path="/customers"
         element={
           <RequireAuth>
-            <AppLayout><Customers /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><Customers /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -75,7 +83,9 @@ export default function App() {
         path="/inventory"
         element={
           <RequireAuth>
-            <AppLayout><Inventory /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><Inventory /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -86,7 +96,9 @@ export default function App() {
         path="/purchase-orders"
         element={
           <RequireAuth>
-            <AppLayout><PurchaseOrders /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><PurchaseOrders /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -94,7 +106,9 @@ export default function App() {
         path="/purchase-orders/new"
         element={
           <RequireAuth>
-            <AppLayout><NewPurchaseOrder /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><NewPurchaseOrder /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -102,7 +116,9 @@ export default function App() {
         path="/purchase-orders/:id"
         element={
           <RequireAuth>
-            <AppLayout><PurchaseOrderDetail /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><PurchaseOrderDetail /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -111,7 +127,9 @@ export default function App() {
         path="/sales-orders"
         element={
           <RequireAuth>
-            <AppLayout><SalesOrders /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><SalesOrders /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -119,7 +137,9 @@ export default function App() {
         path="/sales-orders/list"
         element={
           <RequireAuth>
-            <AppLayout><SalesOrdersList /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><SalesOrdersList /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -127,7 +147,9 @@ export default function App() {
         path="/sales-orders/new"
         element={
           <RequireAuth>
-            <AppLayout><NewSalesOrder /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><NewSalesOrder /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -135,7 +157,9 @@ export default function App() {
         path="/sales-orders/:id/edit"
         element={
           <RequireAuth>
-            <AppLayout><NewSalesOrder /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><NewSalesOrder /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -143,7 +167,9 @@ export default function App() {
         path="/sales-orders/:id"
         element={
           <RequireAuth>
-            <AppLayout><SalesOrderDetail /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><SalesOrderDetail /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -163,6 +189,26 @@ export default function App() {
           <RequireAuth>
             <RequireRole allow={['admin','supervisor','office']}>
               <AppLayout><SalesReportProductCustomers /></AppLayout>
+            </RequireRole>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sales-reports/customer-history"
+        element={
+          <RequireAuth>
+            <RequireRole allow={['admin','supervisor','office']}>
+              <AppLayout><CustomerSalesHistory /></AppLayout>
+            </RequireRole>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/sales-orders/merged-unpaid"
+        element={
+          <RequireAuth>
+            <RequireRole allow={['admin','supervisor','office']}>
+              <AppLayout><MergedUnpaidSOs /></AppLayout>
             </RequireRole>
           </RequireAuth>
         }
@@ -198,7 +244,9 @@ export default function App() {
         path="/production-reports/:id"
         element={
           <RequireAuth>
-            <AppLayout><ProductionDetail /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office', 'worker']}>
+              <AppLayout><ProductionDetail /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -206,7 +254,9 @@ export default function App() {
         path="/production/records"
         element={
           <RequireAuth>
-            <AppLayout><ProductionRecords /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><ProductionRecords /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -214,7 +264,9 @@ export default function App() {
         path="/production/dashboard"
         element={
           <RequireAuth>
-            <AppLayout><ProductionDashboard /></AppLayout>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><ProductionDashboard /></AppLayout>
+            </RequireRole>
           </RequireAuth>
         }
       />
@@ -240,8 +292,8 @@ export default function App() {
         }
       />
 
-      <Route path="/" element={<Navigate to="/sales-orders" replace />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="/" element={<DefaultRedirect />} />
+      <Route path="*" element={<DefaultRedirect />} />
     </Routes>
   );
 }

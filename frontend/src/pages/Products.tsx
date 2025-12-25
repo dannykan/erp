@@ -4,6 +4,7 @@ import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button, Tag, message, Divider } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../app/api';
+import { useResponsive } from '../hooks/useResponsive';
 
 type Product = {
   id: number;
@@ -32,6 +33,7 @@ export default function Products() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const navigate = useNavigate();
+  const { isMobile, isTablet } = useResponsive();
 
   const columns: ProColumns<Product>[] = [
     { 
@@ -250,6 +252,7 @@ export default function Products() {
           <Button
             key="new"
             type="primary"
+            size={isMobile ? 'small' : 'middle'}
             onClick={() => {
               setEditing(null);
               setOpen(true);
@@ -277,9 +280,20 @@ export default function Products() {
           return { data, success: true };
         }}
         columns={columns}
-        search={{ labelWidth: 'auto' }}
-        pagination={{ pageSize: 20 }}
-        scroll={{ x: 'max-content' }}
+        search={{ 
+          labelWidth: isMobile ? 80 : isTablet ? 100 : 'auto',
+          span: isMobile ? 24 : isTablet ? 12 : 8,
+          defaultCollapsed: true,
+        }}
+        pagination={{ 
+          pageSize: 20,
+          showSizeChanger: !isMobile,
+          showQuickJumper: !isMobile,
+          showTotal: (total) => `共 ${total} 條`,
+          simple: isMobile,
+          size: isMobile ? 'small' : 'default',
+        }}
+        scroll={{ x: isMobile ? 1200 : 1400 }}
       />
 
       <ModalForm

@@ -1,9 +1,11 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Button, message, DatePicker, Tag, Tabs } from 'antd';
+import { Button, message, DatePicker, Tag, Tabs, Space } from 'antd';
 import { ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import { api } from '../app/api';
+import { useNavigate } from 'react-router-dom';
+import { useResponsive } from '../hooks/useResponsive';
 
 dayjs.extend(isoWeek);
 
@@ -15,6 +17,8 @@ type Row = {
   doc_date?: string;
   customer_name: string;
   status: string;
+  is_paid?: boolean;
+  paid_at?: string;
   items?: any[];
   created_at?: string;
   picked_at?: string;
@@ -24,8 +28,11 @@ type Row = {
 
 export default function SalesOrdersList() {
   const actionRef = useRef<ActionType>();
+  const nav = useNavigate();
+  const { isMobile, isTablet } = useResponsive();
   const [lastParams, setLastParams] = useState<any>({});
   const [products, setProducts] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
   const [statusPreset, setStatusPreset] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -35,14 +42,26 @@ export default function SalesOrdersList() {
         setProducts(ps || []);
       } catch {}
     })();
+    (async () => {
+      try {
+        const cs = await api.listCustomers({});
+        // 只显示启用的客户
+        setCustomers((Array.isArray(cs) ? cs.filter((c: any) => c.is_active !== false) : []) || []);
+      } catch {}
+    })();
   }, []);
 
   const columns: ProColumns<Row>[] = [
     {
-      title: '日期區間',
-      dataIndex: 'date_range',
+      title: '出貨時間區間',
+      dataIndex: 'shipped_at_range',
       hideInTable: true,
-      renderFormItem: () => <RangePicker allowClear />,
+      valueType: 'dateRange',
+      fieldProps: {
+        placeholder: ['開始日期', '結束日期'],
+        style: { width: '100%' },
+      },
+      order: 1,
     },
     {
       title: '品項',
@@ -57,15 +76,59 @@ export default function SalesOrdersList() {
           value: p.id,
         })),
         placeholder: '搜尋品項（SKU/品名）',
+        style: { width: '100%' },
       },
+      order: 2,
     },
-    { title: '單號', dataIndex: 'so_no' },
-    { title: '日期', dataIndex: 'doc_date', valueType: 'date' },
-    { title: '客戶', dataIndex: 'customer_name' },
+    {
+      title: '單號',
+      dataIndex: 'so_no',
+      width: isMobile ? 120 : 150,
+      fixed: 'left',
+      order: 3,
+    },
+    {
+      title: '客戶',
+      dataIndex: 'customer_name',
+      hideInTable: false,
+      valueType: 'select',
+      width: isMobile ? 120 : 150,
+      fieldProps: {
+        showSearch: true,
+        optionFilterProp: 'label',
+        options: customers.map(c => ({
+          label: c.name,
+          value: c.name,
+        })),
+        placeholder: '請選擇客戶',
+        allowClear: true,
+        style: { width: '100%' },
+      },
+      order: 4,
+    },
+    {
+      title: '出貨時間',
+      dataIndex: 'shipped_at',
+      valueType: 'dateTime',
+      search: false,
+      hideInTable: false,
+      width: isMobile ? 140 : 160,
+      fixed: isMobile ? false : 'left',
+      defaultSortOrder: 'descend',
+      sorter: (a, b) => {
+        // 已出货的排在前面，然后按时间倒序
+        if (a.shipped_at && !b.shipped_at) return -1;
+        if (!a.shipped_at && b.shipped_at) return 1;
+        if (!a.shipped_at && !b.shipped_at) return 0;
+        return dayjs(b.shipped_at).valueOf() - dayjs(a.shipped_at).valueOf();
+      },
+      render: (_, r) => r.shipped_at ? dayjs(r.shipped_at).format('YYYY-MM-DD HH:mm') : '-',
+    },
     {
       title: '狀態',
       dataIndex: 'status',
       valueType: 'select',
+      width: isMobile ? 80 : 100,
       valueEnum: {
         DRAFT: { text: '待出貨', status: 'Default' },
         PICKED: { text: '已揀貨', status: 'Processing' },
@@ -86,25 +149,35 @@ export default function SalesOrdersList() {
       },
     },
     {
-      title: '出貨時間',
-      dataIndex: 'shipped_at',
-      valueType: 'dateTime',
-      search: false,
-      hideInTable: false,
-      sorter: (a, b) => {
-        // 已出货的排在前面，然后按时间倒序
-        if (a.shipped_at && !b.shipped_at) return -1;
-        if (!a.shipped_at && b.shipped_at) return 1;
-        if (!a.shipped_at && !b.shipped_at) return 0;
-        return dayjs(b.shipped_at).valueOf() - dayjs(a.shipped_at).valueOf();
+      title: '付款狀態',
+      dataIndex: 'is_paid',
+      valueType: 'select',
+      width: isMobile ? 90 : 100,
+      valueEnum: {
+        true: { text: '已付款', status: 'Success' },
+        false: { text: '未付款', status: 'Warning' },
       },
-      render: (_, r) => r.shipped_at ? dayjs(r.shipped_at).format('YYYY-MM-DD HH:mm') : '-',
+      fieldProps: {
+        placeholder: '請選擇',
+        allowClear: true,
+      },
+      render: (_, r) => {
+        if (r.status === 'SHIPPED') {
+          return r.is_paid ? (
+            <Tag color="green">已付款</Tag>
+          ) : (
+            <Tag color="orange">未付款</Tag>
+          );
+        }
+        return '-';
+      },
     },
     {
       title: '物流單號',
       dataIndex: 'logistics_no',
       search: false,
       hideInTable: false,
+      width: isMobile ? 100 : 120,
       render: (_, r) => {
         // 只有已出货才显示物流单号
         if (r.status === 'SHIPPED' && r.logistics_no) {
@@ -117,14 +190,27 @@ export default function SalesOrdersList() {
       title: '品項數',
       dataIndex: 'items',
       search: false,
+      width: isMobile ? 70 : 80,
+      align: 'right',
       render: (_, r) => (r.items ? r.items.length : 0),
     },
-    { title: '建立時間', dataIndex: 'created_at', valueType: 'dateTime', search: false },
+    { title: '建立時間', dataIndex: 'created_at', valueType: 'dateTime', search: false, width: isMobile ? 150 : 180 },
+    {
+      title: '操作',
+      valueType: 'option',
+      width: isMobile ? 80 : 100,
+      fixed: 'right',
+      render: (_, r) => [
+        <Button key="view" type="link" size="small" onClick={() => nav(`/sales-orders/${r.id}`)}>
+          查看
+        </Button>,
+      ],
+    },
     // TODO: 操作：查看明細、列印 PDF（你已有 detail / print 的話再接）
   ];
 
   return (
-    <>
+    <div style={{ width: '100%', overflow: 'hidden' }}>
       <Tabs
         activeKey={statusPreset || 'all'}
         onChange={(key) => {
@@ -141,32 +227,47 @@ export default function SalesOrdersList() {
           { key: 'SHIPPED', label: '已出貨' },
         ]}
         style={{ marginBottom: 16 }}
+        size={isMobile ? 'small' : 'middle'}
+        tabBarStyle={isMobile ? { marginBottom: 8 } : undefined}
       />
       <ProTable<Row>
         rowKey="id"
         actionRef={actionRef}
         columns={columns}
         headerTitle="銷貨單查詢"
-      toolBarRender={() => [
-        <Button
-          key="thisMonth"
-          onClick={() => {
-            actionRef.current?.setPageInfo?.({ current: 1 });
-            actionRef.current?.reload?.();
-          }}
-        >
-          更新
-        </Button>,
-        <Button
-          key="export"
-          type="primary"
-          onClick={async () => {
+        scroll={{ 
+          x: isMobile ? 1100 : 1500,
+          scrollToFirstRowOnChange: true,
+        }}
+        style={{ 
+          width: '100%',
+        }}
+        size={isMobile ? 'small' : 'middle'}
+        tableStyle={{
+          minWidth: isMobile ? 1100 : 'auto',
+        }}
+        toolBarRender={() => [
+          <Button
+            key="refresh"
+            size={isMobile ? 'small' : 'middle'}
+            onClick={() => {
+              actionRef.current?.setPageInfo?.({ current: 1 });
+              actionRef.current?.reload?.();
+            }}
+          >
+            更新
+          </Button>,
+          <Button
+            key="export"
+            type="primary"
+            size={isMobile ? 'small' : 'middle'}
+            onClick={async () => {
             try {
               const blob = await api.exportSOsXlsx(lastParams);
               const url = window.URL.createObjectURL(blob);
               const a = document.createElement('a');
-              const from = lastParams.date_from || '';
-              const to = lastParams.date_to || '';
+              const from = lastParams.shipped_at_from || lastParams.date_from || '';
+              const to = lastParams.shipped_at_to || lastParams.date_to || '';
               const customer = lastParams.customer_name_like || '';
               const status = lastParams.status || '';
               
@@ -207,11 +308,20 @@ export default function SalesOrdersList() {
         // customer_name_like 用「客戶」欄位（ProTable 預設用 dataIndex）
         const customer_name_like = (params.customer_name as string | undefined)?.trim();
 
-        // 日期區間：從 date_range 解析
+        // 出貨時間區間：從 shipped_at_range 解析（優先使用）
+        const shippedRange = params.shipped_at_range as any[] | undefined;
+        let shipped_at_from: string | undefined;
+        let shipped_at_to: string | undefined;
+        if (shippedRange?.length === 2) {
+          shipped_at_from = dayjs(shippedRange[0]).format('YYYY-MM-DD');
+          shipped_at_to = dayjs(shippedRange[1]).format('YYYY-MM-DD');
+        }
+
+        // 兼容舊的 date_range（如果沒有 shipped_at_range）
         const dr = params.date_range as any[] | undefined;
         let date_from: string | undefined;
         let date_to: string | undefined;
-        if (dr?.length === 2) {
+        if (!shipped_at_from && dr?.length === 2) {
           date_from = dayjs(dr[0]).format('YYYY-MM-DD');
           date_to = dayjs(dr[1]).format('YYYY-MM-DD');
         }
@@ -228,8 +338,16 @@ export default function SalesOrdersList() {
           query.status = params.status;
         }
         if (params.product_id) query.product_id = String(params.product_id);
-        if (date_from) query.date_from = date_from;
-        if (date_to) query.date_to = date_to;
+        // 付款狀態篩選
+        if (params.is_paid !== undefined && params.is_paid !== null) {
+          query.is_paid = String(params.is_paid === true || params.is_paid === 'true');
+        }
+        // 優先使用出貨時間篩選
+        if (shipped_at_from) query.shipped_at_from = shipped_at_from;
+        if (shipped_at_to) query.shipped_at_to = shipped_at_to;
+        // 向後兼容：如果沒有出貨時間篩選，使用 doc_date
+        if (!shipped_at_from && date_from) query.date_from = date_from;
+        if (!shipped_at_to && date_to) query.date_to = date_to;
 
         setLastParams(query);
 
@@ -240,72 +358,90 @@ export default function SalesOrdersList() {
           success: true,
         };
       }}
-      pagination={{ pageSize: 50 }}
-      search={{
-        labelWidth: 80,
+      pagination={{ 
+        pageSize: 50,
+        showSizeChanger: !isMobile,
+        showQuickJumper: !isMobile,
+        showTotal: (total) => `共 ${total} 條`,
+        simple: isMobile,
+        size: isMobile ? 'small' : 'default',
+      }}
+        search={{
+          labelWidth: isMobile ? 80 : isTablet ? 100 : 120,
+          span: isMobile ? 24 : isTablet ? 12 : 6,
+          defaultCollapsed: true,
         optionRender: (searchConfig, formProps, dom) => {
-          return [
-            ...dom,
-            <Button
-              key="wk"
-              onClick={() => {
-                const from = dayjs().startOf('isoWeek');
-                const to = dayjs().endOf('isoWeek');
-                formProps.form?.setFieldsValue({ date_range: [from, to] });
-                searchConfig?.form?.submit?.();
-              }}
-            >
-              本週
-            </Button>,
-            <Button
-              key="mo"
-              onClick={() => {
-                const from = dayjs().startOf('month');
-                const to = dayjs().endOf('month');
-                formProps.form?.setFieldsValue({ date_range: [from, to] });
-                searchConfig?.form?.submit?.();
-              }}
-            >
-              本月
-            </Button>,
-            <Button
-              key="lm"
-              onClick={() => {
-                const from = dayjs().subtract(1, 'month').startOf('month');
-                const to = dayjs().subtract(1, 'month').endOf('month');
-                formProps.form?.setFieldsValue({ date_range: [from, to] });
-                searchConfig?.form?.submit?.();
-              }}
-            >
-              上月
-            </Button>,
-            <Button
-              key="q"
-              onClick={() => {
-                const from = dayjs().startOf('quarter');
-                const to = dayjs().endOf('quarter');
-                formProps.form?.setFieldsValue({ date_range: [from, to] });
-                searchConfig?.form?.submit?.();
-              }}
-            >
-              本季
-            </Button>,
-            <Button
-              key="y"
-              onClick={() => {
-                const from = dayjs().startOf('year');
-                const to = dayjs().endOf('year');
-                formProps.form?.setFieldsValue({ date_range: [from, to] });
-                searchConfig?.form?.submit?.();
-              }}
-            >
-              今年
-            </Button>,
-          ];
+          return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              {dom}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <Button
+                  key="wk"
+                  size="small"
+                  onClick={() => {
+                    const from = dayjs().startOf('isoWeek');
+                    const to = dayjs().endOf('isoWeek');
+                    formProps.form?.setFieldsValue({ shipped_at_range: [from, to] });
+                    searchConfig?.form?.submit?.();
+                  }}
+                >
+                  本週
+                </Button>
+                <Button
+                  key="mo"
+                  size="small"
+                  onClick={() => {
+                    const from = dayjs().startOf('month');
+                    const to = dayjs().endOf('month');
+                    formProps.form?.setFieldsValue({ shipped_at_range: [from, to] });
+                    searchConfig?.form?.submit?.();
+                  }}
+                >
+                  本月
+                </Button>
+                <Button
+                  key="lm"
+                  size="small"
+                  onClick={() => {
+                    const from = dayjs().subtract(1, 'month').startOf('month');
+                    const to = dayjs().subtract(1, 'month').endOf('month');
+                    formProps.form?.setFieldsValue({ shipped_at_range: [from, to] });
+                    searchConfig?.form?.submit?.();
+                  }}
+                >
+                  上月
+                </Button>
+                <Button
+                  key="q"
+                  size="small"
+                  onClick={() => {
+                    const from = dayjs().startOf('quarter');
+                    const to = dayjs().endOf('quarter');
+                    formProps.form?.setFieldsValue({ shipped_at_range: [from, to] });
+                    searchConfig?.form?.submit?.();
+                  }}
+                >
+                  本季
+                </Button>
+                <Button
+                  key="y"
+                  size="small"
+                  onClick={() => {
+                    const from = dayjs().startOf('year');
+                    const to = dayjs().endOf('year');
+                    formProps.form?.setFieldsValue({ shipped_at_range: [from, to] });
+                    searchConfig?.form?.submit?.();
+                  }}
+                >
+                  今年
+                </Button>
+              </div>
+            </div>
+          );
         },
       }}
       />
-    </>
+    </div>
   );
 }
 

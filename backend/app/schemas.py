@@ -328,11 +328,42 @@ class SOView(BaseModel):
     shipped_by_id: Optional[int] = None
     ship_note: Optional[str] = None
     logistics_no: Optional[str] = None
+    # 付款紀錄
+    is_paid: bool = False
+    paid_at: Optional[datetime] = None
+    paid_by_id: Optional[int] = None
     items: List[SOItemView]
 
 class SOPaged(BaseModel):
     rows: List["SOView"]
     total: int
+
+# ===== 合併未付款銷貨單 =====
+class MergedUnpaidSOItem(BaseModel):
+    product_id: int
+    product_sku: Optional[str] = None
+    product_name: str
+    product_spec: Optional[str] = None
+    total_qty: float
+    unit: str
+    unit_price: float
+    price_unit: str
+    total_amount: float
+    source_so_nos: List[str]  # 來源單號列表
+    mark: Optional[str] = None
+    note: Optional[str] = None
+
+class MergedUnpaidSOOut(BaseModel):
+    customer_name: str
+    customer_address: Optional[str] = None
+    customer_phone: Optional[str] = None
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    source_so_ids: List[int]
+    source_so_nos: List[str]
+    items: List[MergedUnpaidSOItem]
+    total_amount: float
+    total_qty: float
 
 class SOCommonItemRow(BaseModel):
     product_id: int
@@ -375,6 +406,27 @@ class SRProductRankOut(BaseModel):
     date_to: Optional[date] = None
     top_n: int
     rows: List[SRProductRankRow]
+
+class SRCustomerStats(BaseModel):
+    """客户销货单统计数据"""
+    total_orders: int  # 总订单数
+    total_amount: float  # 总金额
+    total_qty: float  # 总数量
+    avg_order_amount: float  # 平均订单金额
+    first_order_date: Optional[date] = None  # 首次订单日期
+    last_order_date: Optional[date] = None  # 最近订单日期
+    orders_by_status: dict[str, int]  # 按状态统计订单数
+    orders_this_month: int  # 本月订单数
+    orders_last_month: int  # 上月订单数
+    amount_this_month: float  # 本月金额
+    amount_last_month: float  # 上月金额
+
+class SRCustomerHistoryOut(BaseModel):
+    customer_name: str
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    stats: SRCustomerStats
+    orders: List[SOView]  # 销货单列表
 
 
 # ===== 客戶 =====

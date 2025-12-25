@@ -3,6 +3,7 @@ import { ProTable, ModalForm, ProFormText, ProFormSwitch, ProFormDatePicker } fr
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button, Tag, message } from 'antd';
 import { api } from '../app/api';
+import { useResponsive } from '../hooks/useResponsive';
 
 type Customer = {
   id: number;
@@ -27,6 +28,7 @@ export default function Customers() {
   const actionRef = useRef<ActionType>();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
+  const { isMobile, isTablet } = useResponsive();
 
   const columns: ProColumns<Customer>[] = [
     { 
@@ -153,8 +155,10 @@ export default function Customers() {
     {
       title: '操作',
       valueType: 'option',
+      width: 100,
+      fixed: 'right',
       render: (_, r) => [
-        <Button key="edit" type="link" onClick={() => { setEditing(r); setOpen(true); }}>
+        <Button key="edit" type="link" size="small" onClick={() => { setEditing(r); setOpen(true); }}>
           編輯
         </Button>,
       ],
@@ -178,9 +182,20 @@ export default function Customers() {
           return { data, success: true };
         }}
         columns={columns}
-        search={{ labelWidth: 'auto' }}
-        pagination={{ pageSize: 20 }}
-        scroll={{ x: 'max-content' }}
+        search={{ 
+          labelWidth: isMobile ? 80 : isTablet ? 100 : 'auto',
+          span: isMobile ? 24 : isTablet ? 12 : 8,
+          defaultCollapsed: true,
+        }}
+        pagination={{ 
+          pageSize: 20,
+          showSizeChanger: !isMobile,
+          showQuickJumper: !isMobile,
+          showTotal: (total) => `共 ${total} 條`,
+          simple: isMobile,
+          size: isMobile ? 'small' : 'default',
+        }}
+        scroll={{ x: isMobile ? 1200 : 1500 }}
       />
 
       <ModalForm

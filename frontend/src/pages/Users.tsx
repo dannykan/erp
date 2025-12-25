@@ -67,7 +67,7 @@ export default function Users() {
           return { data, success: true };
         }}
         columns={columns}
-        search={{ labelWidth: 'auto' }}
+        search={{ labelWidth: 'auto', defaultCollapsed: true }}
         pagination={{ pageSize: 20 }}
         scroll={{ x: 'max-content' }}
       />

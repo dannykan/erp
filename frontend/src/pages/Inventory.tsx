@@ -3,6 +3,7 @@ import { ProTable, ModalForm, ProFormSelect, ProFormDigit, ProFormText } from '@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { Button, Tag, Drawer, Table, message, Switch, Space } from 'antd';
 import { api } from '../app/api';
+import { useResponsive } from '../hooks/useResponsive';
 
 type InvRow = {
   product_id: number;
@@ -22,6 +23,7 @@ function getProductUnit(row?: InvRow): string {
 
 export default function Inventory() {
   const actionRef = useRef<ActionType>();
+  const { isMobile, isTablet } = useResponsive();
   const [lowOnly, setLowOnly] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selected, setSelected] = useState<InvRow | null>(null);
@@ -138,9 +140,19 @@ export default function Inventory() {
           return { data, success: true };
         }}
         columns={columns}
-        search={{ labelWidth: 'auto' }}
-        pagination={{ pageSize: 20 }}
-        scroll={{ x: 'max-content' }}
+        search={{ 
+          labelWidth: isMobile ? 80 : isTablet ? 100 : 'auto',
+          span: isMobile ? 24 : isTablet ? 12 : 8,
+          defaultCollapsed: true,
+        }}
+        pagination={{ 
+          pageSize: 20,
+          showSizeChanger: !isMobile,
+          showQuickJumper: !isMobile,
+          simple: isMobile,
+          size: isMobile ? 'small' : 'default',
+        }}
+        scroll={{ x: isMobile ? 1000 : 'max-content' }}
       />
 
       <Drawer

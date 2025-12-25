@@ -6,12 +6,15 @@ from typing import Optional
 import io
 
 from .db import get_db
-from .models import SalesOrder, SalesOrderItem, Product
+from .models import SalesOrder, SalesOrderItem, Product, Customer
 from .deps import get_current_user
 from .schemas import (
     SRProductCustomersOut, SRProductCustomerRow,
     SRProductRankOut, SRProductRankRow,
+    SRCustomerHistoryOut, SRCustomerStats, SOView,
 )
+from .models import Customer, SalesOrder, SalesOrderItem
+from datetime import timedelta
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 
@@ -34,6 +37,51 @@ def _apply_date_filter(q, date_from: Optional[date], date_to: Optional[date]):
     if date_to:
         q = q.filter(SalesOrder.doc_date <= date_to)
     return q
+
+def _so_to_view(db: Session, so: SalesOrder) -> SOView:
+    """将 SalesOrder 转换为 SOView（用于客户历史查询）"""
+    prod_map = {p.id: p for p in db.query(Product).all()}
+    
+    # 獲取客戶資訊（地址和電話）
+    customer = db.query(Customer).filter(Customer.name == so.customer_name).first()
+    customer_address = customer.address if customer else None
+    customer_phone = customer.phone if customer else None
+    
+    items = []
+    for it in so.items:
+        p = prod_map.get(it.product_id)
+        items.append({
+            "id": it.id,
+            "product_id": it.product_id,
+            "product_sku": getattr(p, "sku", None) if p else None,
+            "product_name": getattr(p, "name", f"#{it.product_id}") if p else f"#{it.product_id}",
+            "product_spec": getattr(p, "spec", None) if p else None,
+            "qty": float(it.qty),
+            "unit": it.unit,
+            "unit_price": float(getattr(it, "unit_price", 0) or 0),
+            "price_unit": getattr(it, "price_unit", "件") or "件",
+            "pieces_per_case": getattr(p, "pieces_per_case", None) if p else None,
+            "mark": getattr(it, "mark", None) or "",
+            "note": it.note or "",
+        })
+    return SOView(
+        id=so.id,
+        so_no=so.so_no,
+        customer_name=so.customer_name,
+        customer_address=customer_address,
+        customer_phone=customer_phone,
+        doc_date=so.doc_date,
+        note=so.note,
+        status=so.status,
+        created_at=so.created_at,
+        picked_at=so.picked_at,
+        picked_by_id=so.picked_by_id,
+        shipped_at=so.shipped_at,
+        shipped_by_id=so.shipped_by_id,
+        ship_note=so.ship_note,
+        logistics_no=so.logistics_no,
+        items=items,
+    )
 
 @router.get("/product-customers", response_model=SRProductCustomersOut)
 def product_customers(
@@ -226,5 +274,119 @@ def products_rank_export_xlsx(
         content=buf.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+@router.get("/customer-history", response_model=SRCustomerHistoryOut)
+def customer_history(
+    customer_name: str = Query(..., description="客户名称"),
+    date_from: Optional[date] = Query(None),
+    date_to: Optional[date] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """获取客户的销货单历史和统计数据"""
+    # 确认客户存在
+    customer = db.query(Customer).filter(Customer.name == customer_name).first()
+    if not customer:
+        raise HTTPException(status_code=404, detail="customer not found")
+    
+    # 基础查询：该客户的所有销货单
+    base_q = db.query(SalesOrder).filter(SalesOrder.customer_name == customer_name)
+    
+    # 应用日期过滤
+    if date_from:
+        base_q = base_q.filter(SalesOrder.doc_date >= date_from)
+    if date_to:
+        base_q = base_q.filter(SalesOrder.doc_date <= date_to)
+    
+    # 获取所有订单（用于统计）
+    all_orders = base_q.all()
+    
+    # 分页查询
+    total = len(all_orders)
+    orders = base_q.order_by(desc(SalesOrder.doc_date), desc(SalesOrder.id))\
+                   .offset((page - 1) * page_size)\
+                   .limit(page_size)\
+                   .all()
+    
+    # 计算统计数据
+    total_orders = len(all_orders)
+    total_amount = 0.0
+    total_qty = 0.0
+    orders_by_status = {"DRAFT": 0, "PICKED": 0, "SHIPPED": 0}
+    first_order_date = None
+    last_order_date = None
+    
+    # 本月和上月的日期范围
+    today = date.today()
+    this_month_start = date(today.year, today.month, 1)
+    if today.month == 1:
+        last_month_start = date(today.year - 1, 12, 1)
+        last_month_end = date(today.year - 1, 12, 31)
+    else:
+        last_month_start = date(today.year, today.month - 1, 1)
+        last_month_end = date(today.year, today.month, 1) - timedelta(days=1)
+    
+    orders_this_month = 0
+    orders_last_month = 0
+    amount_this_month = 0.0
+    amount_last_month = 0.0
+    
+    for so in all_orders:
+        # 计算订单金额和数量
+        order_amount = 0.0
+        order_qty = 0.0
+        for item in so.items:
+            item_amount = float(item.qty or 0) * float(item.unit_price or 0)
+            order_amount += item_amount
+            order_qty += float(item.qty or 0)
+        
+        total_amount += order_amount
+        total_qty += order_qty
+        
+        # 按状态统计
+        status = so.status or "DRAFT"
+        if status in orders_by_status:
+            orders_by_status[status] += 1
+        
+        # 首次和最近订单日期
+        if so.doc_date:
+            if first_order_date is None or so.doc_date < first_order_date:
+                first_order_date = so.doc_date
+            if last_order_date is None or so.doc_date > last_order_date:
+                last_order_date = so.doc_date
+            
+            # 本月和上月统计
+            if so.doc_date >= this_month_start:
+                orders_this_month += 1
+                amount_this_month += order_amount
+            elif last_month_start <= so.doc_date <= last_month_end:
+                orders_last_month += 1
+                amount_last_month += order_amount
+    
+    avg_order_amount = total_amount / total_orders if total_orders > 0 else 0.0
+    
+    stats = SRCustomerStats(
+        total_orders=total_orders,
+        total_amount=total_amount,
+        total_qty=total_qty,
+        avg_order_amount=avg_order_amount,
+        first_order_date=first_order_date,
+        last_order_date=last_order_date,
+        orders_by_status=orders_by_status,
+        orders_this_month=orders_this_month,
+        orders_last_month=orders_last_month,
+        amount_this_month=amount_this_month,
+        amount_last_month=amount_last_month,
+    )
+    
+    return SRCustomerHistoryOut(
+        customer_name=customer_name,
+        date_from=date_from,
+        date_to=date_to,
+        stats=stats,
+        orders=[_so_to_view(db, so) for so in orders],
     )
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, message, Space } from 'antd';
 import { api, setToken } from '../app/api';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../app/auth';
+import { useAuth } from '../app/useAuth';
 
 export default function Login() {
   const nav = useNavigate();
