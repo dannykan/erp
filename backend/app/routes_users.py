@@ -44,17 +44,31 @@ def create_user(
     if db.query(User).filter(User.username == payload.username).first():
         raise HTTPException(400, "username exists")
 
+    # 确保 display_name 不为空
+    display_name = payload.display_name.strip() if payload.display_name else payload.username
+    
+    # 验证 role 值
+    try:
+        user_role = Role(payload.role) if payload.role else Role.worker
+    except ValueError:
+        raise HTTPException(400, f"Invalid role: {payload.role}")
+
     pwd = payload.password or "123456"
     u = User(
         username=payload.username,
-        display_name=payload.display_name,
-        role=Role(payload.role) if payload.role else Role.worker,
-        is_active=payload.is_active,
+        display_name=display_name,
+        role=user_role,
+        is_active=payload.is_active if payload.is_active is not None else True,
         password_hash=hash_password(pwd),
     )
     db.add(u)
-    db.commit()
-    db.refresh(u)
+    try:
+        db.commit()
+        db.refresh(u)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Failed to create user: {str(e)}")
+    
     return UserOut(
         id=u.id,
         username=u.username,
@@ -82,15 +96,29 @@ def update_user(
             raise HTTPException(400, "username exists")
         u.username = payload.username
 
-    u.display_name = payload.display_name
-    u.role = Role(payload.role) if payload.role else u.role
-    u.is_active = payload.is_active
+    # 确保 display_name 不为空
+    if payload.display_name:
+        u.display_name = payload.display_name.strip() or u.display_name
+    
+    # 验证 role 值
+    if payload.role:
+        try:
+            u.role = Role(payload.role)
+        except ValueError:
+            raise HTTPException(400, f"Invalid role: {payload.role}")
+    
+    if payload.is_active is not None:
+        u.is_active = payload.is_active
 
     if payload.password:
         u.password_hash = hash_password(payload.password)
 
-    db.commit()
-    db.refresh(u)
+    try:
+        db.commit()
+        db.refresh(u)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"Failed to update user: {str(e)}")
     return UserOut(
         id=u.id,
         username=u.username,
