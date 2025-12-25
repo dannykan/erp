@@ -1,7 +1,7 @@
 """add_payment_fields_to_sales_orders
 
 Revision ID: j5k6l7m8n9o0
-Revises: i4j5k6l7m8n9
+Revises: 9ada3ed70e7a
 Create Date: 2025-12-23 14:00:00.000000
 
 """
