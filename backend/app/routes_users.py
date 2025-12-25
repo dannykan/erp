@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from passlib.hash import bcrypt
 
 from .db import get_db, engine, Base
 from .deps import get_current_user, require_roles
 from .models import User, Role
 from .schemas import UserIn, UserOut
+from .security import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -50,7 +50,7 @@ def create_user(
         display_name=payload.display_name,
         role=Role(payload.role) if payload.role else Role.worker,
         is_active=payload.is_active,
-        password_hash=bcrypt.hash(pwd),
+        password_hash=hash_password(pwd),
     )
     db.add(u)
     db.commit()
@@ -87,7 +87,7 @@ def update_user(
     u.is_active = payload.is_active
 
     if payload.password:
-        u.password_hash = bcrypt.hash(payload.password)
+        u.password_hash = hash_password(payload.password)
 
     db.commit()
     db.refresh(u)
