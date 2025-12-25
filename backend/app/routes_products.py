@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, nullslast
 from typing import List
 from pydantic import BaseModel
 from .db import get_db, engine, Base
@@ -22,7 +22,8 @@ def list_products(
     user=Depends(get_current_user),
 ):
     Base.metadata.create_all(bind=engine)
-    qry = db.query(Product).order_by(desc(Product.id))
+    # 按SKU排序（NULL值排最后），这样B开头的产品可以显示
+    qry = db.query(Product).order_by(nullslast(Product.sku), Product.id)
     if q:
         qry = qry.filter((Product.name.contains(q)) | (Product.sku.contains(q)))
     if active is not None:

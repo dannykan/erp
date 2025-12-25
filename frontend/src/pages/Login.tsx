@@ -29,9 +29,12 @@ export default function Login() {
               setToken(data.access_token);
               await refreshMe();
               message.success('登入成功');
-              // 直接导航，不依赖 useEffect
-              nav('/sales-orders', { replace: true });
-            } catch {
+              // 使用 window.location 强制刷新并跳转，确保状态已更新
+              setTimeout(() => {
+                window.location.href = '/sales-orders';
+              }, 100);
+            } catch (e) {
+              console.error('Login error:', e);
               message.error('登入失敗：請確認帳密');
               setLoading(false);
             }

@@ -259,9 +259,20 @@ export default function Products() {
           </Button>,
         ]}
         request={async (params) => {
-          // ProTable keyword 欄位名通常是 keyword
-          const q = (params.keyword as string) || undefined;
+          // ProTable 搜索参数：优先使用 keyword，如果没有则使用具体字段（如 name, sku）
+          // 收集所有可能包含搜索值的参数
+          const searchValues: string[] = [];
+          if (params.keyword && typeof params.keyword === 'string') searchValues.push(params.keyword.trim());
+          if (params.name && typeof params.name === 'string') searchValues.push(params.name.trim());
+          if (params.sku && typeof params.sku === 'string') searchValues.push(params.sku.trim());
+          
+          // 使用第一个非空值作为搜索关键词
+          const q = searchValues.find(v => v.length > 0) || undefined;
+          
           const active = params.is_active !== undefined ? String(params.is_active) : undefined;
+          
+          console.log('Products search params:', { params, q, active }); // 调试用
+          
           const data = await api.listProducts({ q, active });
           return { data, success: true };
         }}
