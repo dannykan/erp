@@ -24,7 +24,7 @@ from app.models import (
     InventoryMove, 
     PurchaseOrderItem, 
     SalesOrderItem,
-    BOMItem,
+    BomItem,
     ProductionReportItem
 )
 from import_products import import_products
@@ -38,7 +38,7 @@ def delete_all_products(skip_confirm=False):
         inventory_move_count = db.query(InventoryMove).count()
         po_item_count = db.query(PurchaseOrderItem).count()
         so_item_count = db.query(SalesOrderItem).count()
-        bom_item_count = db.query(BOMItem).count()
+        bom_item_count = db.query(BomItem).count()
         pr_item_count = db.query(ProductionReportItem).count()
         
         print("=" * 60)
@@ -89,7 +89,7 @@ def delete_all_products(skip_confirm=False):
         print(f"  已删除 {deleted_so_items} 条销售订单项")
         
         # 4. 删除BOM物料清单项
-        deleted_bom_items = db.query(BOMItem).delete()
+        deleted_bom_items = db.query(BomItem).delete()
         print(f"  已删除 {deleted_bom_items} 条BOM物料清单项")
         
         # 5. 删除生产报表项
