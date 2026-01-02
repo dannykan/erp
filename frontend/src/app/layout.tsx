@@ -85,7 +85,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <App>
       <ProLayout
-        title="筷子工單系統"
+        title="台悅進銷存系統"
+        logo="/logo.svg"
         location={{ pathname: location.pathname }}
         route={routes as any}
         menuItemRender={(item, dom) => <Link to={item.path || '/'}>{dom}</Link>}
