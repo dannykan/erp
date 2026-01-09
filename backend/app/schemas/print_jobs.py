@@ -3,9 +3,9 @@ from typing import Optional, Literal
 
 
 class PrintJobCreate(BaseModel):
-    kind: Literal["raw"] = "raw"
+    kind: Literal["raw", "image_text"] = "raw"
     text: str
-    encoding: str = "cp950"
+    encoding: str = "cp950"  # raw 用，image_text 會忽略也沒關係
     copies: int = Field(default=1, ge=1, le=20)
 
 
