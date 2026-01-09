@@ -28,7 +28,8 @@ def list_products(
         qry = qry.filter((Product.name.contains(q)) | (Product.sku.contains(q)))
     if active is not None:
         qry = qry.filter(Product.is_active == active)
-    return qry.limit(min(limit, 500)).all()
+    # 增加最大限制以支持更多產品（現在有771個FG/TRADE產品）
+    return qry.limit(min(limit, 2000)).all()
 
 @router.post("", response_model=ProductOut)
 def create_product(

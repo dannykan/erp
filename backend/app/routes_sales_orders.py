@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from sqlalchemy.exc import IntegrityError
@@ -63,6 +63,7 @@ def so_to_view(db: Session, so: SalesOrder) -> SOView:
         is_paid=getattr(so, "is_paid", False),
         paid_at=getattr(so, "paid_at", None),
         paid_by_id=getattr(so, "paid_by_id", None),
+        discount_amount=getattr(so, "discount_amount", None),
         items=items,
     )
 
@@ -816,6 +817,7 @@ def ship_so(
 @router.post("/{so_id}/confirm-payment", response_model=SOView)
 def confirm_payment(
     so_id: int,
+    discount_amount: float = Query(0.0, description="折讓金額"),
     db: Session = Depends(get_db),
     user=Depends(require_roles(Role.admin, Role.office, Role.supervisor)),
 ):
@@ -828,10 +830,13 @@ def confirm_payment(
         raise HTTPException(400, "Only SHIPPED orders can confirm payment")
     if so.is_paid:
         raise HTTPException(400, "Order is already paid")
+    if discount_amount < 0:
+        raise HTTPException(400, "Discount amount cannot be negative")
 
     so.is_paid = True
     so.paid_at = datetime.utcnow()
     so.paid_by_id = user.id
+    so.discount_amount = discount_amount
 
     db.commit()
     db.refresh(so)
@@ -843,8 +848,8 @@ def get_merged_unpaid_sos(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
     customer_name: str = Query(..., description="客戶名稱"),
-    shipped_at_from: Optional[date] = Query(None, description="出貨時間起始日期"),
-    shipped_at_to: Optional[date] = Query(None, description="出貨時間結束日期"),
+    shipped_at_from: Optional[str] = Query(None, description="出貨時間起始日期 (YYYY-MM-DD)"),
+    shipped_at_to: Optional[str] = Query(None, description="出貨時間結束日期 (YYYY-MM-DD)"),
 ):
     """獲取某個客戶未付款的銷貨單，合併品項"""
     from collections import defaultdict
@@ -868,8 +873,8 @@ def get_merged_unpaid_sos(
             "customer_name": customer_name,
             "customer_address": None,
             "customer_phone": None,
-            "date_from": shipped_at_from.isoformat() if shipped_at_from else None,
-            "date_to": shipped_at_to.isoformat() if shipped_at_to else None,
+            "date_from": shipped_at_from_date.isoformat() if shipped_at_from_date else None,
+            "date_to": shipped_at_to_date.isoformat() if shipped_at_to_date else None,
             "source_so_ids": [],
             "source_so_nos": [],
             "items": [],
@@ -953,8 +958,8 @@ def get_merged_unpaid_sos(
         "customer_name": customer_name,
         "customer_address": customer_address,
         "customer_phone": customer_phone,
-        "date_from": shipped_at_from.isoformat() if shipped_at_from else None,
-        "date_to": shipped_at_to.isoformat() if shipped_at_to else None,
+        "date_from": shipped_at_from_date.isoformat() if shipped_at_from_date else None,
+        "date_to": shipped_at_to_date.isoformat() if shipped_at_to_date else None,
         "source_so_ids": source_so_ids,
         "source_so_nos": sorted(source_so_nos),
         "items": items,

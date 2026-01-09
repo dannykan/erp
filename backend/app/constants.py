@@ -10,6 +10,7 @@ class Stage:
     PROD_RECEIVE = "PROD_RECEIVE"  # 生產入庫
     PROD_CONSUME = "PROD_CONSUME"  # 生產扣料
     SHIP = "SHIP"                  # 出貨
+    RETURN = "RETURN"              # 退貨
 
 # 單據類型
 class RefType:
@@ -18,4 +19,5 @@ class RefType:
     PO = "PO"                    # 進貨單
     SO = "SO"                    # 銷貨單
     ADJ = "ADJ"                  # 調整
+    RETURN_ORDER = "RETURN_ORDER"  # 退貨單
 

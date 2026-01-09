@@ -25,6 +25,8 @@ import SalesOrders from '../pages/SalesOrders';
 import SalesOrdersList from '../pages/SalesOrdersList';
 import NewSalesOrder from '../pages/NewSalesOrder';
 import SalesOrderDetail from '../pages/SalesOrderDetail';
+import ReturnOrders from '../pages/ReturnOrders';
+import NewReturnOrder from '../pages/NewReturnOrder';
 import ProductionMy from '../pages/ProductionMy';
 import ProductionNew from '../pages/ProductionNew';
 import ProductionApproval from '../pages/ProductionApproval';
@@ -209,6 +211,26 @@ export default function App() {
           <RequireAuth>
             <RequireRole allow={['admin','supervisor','office']}>
               <AppLayout><MergedUnpaidSOs /></AppLayout>
+            </RequireRole>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/return-orders"
+        element={
+          <RequireAuth>
+            <RequireRole allow={['admin','supervisor','office']}>
+              <AppLayout><ReturnOrders /></AppLayout>
+            </RequireRole>
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/return-orders/new"
+        element={
+          <RequireAuth>
+            <RequireRole allow={['admin','supervisor','office']}>
+              <AppLayout><NewReturnOrder /></AppLayout>
             </RequireRole>
           </RequireAuth>
         }

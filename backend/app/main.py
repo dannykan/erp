@@ -12,6 +12,7 @@ from .routes_products import router as products_router
 from .routes_inventory import router as inventory_router
 from .routes_purchase_orders import router as po_router
 from .routes_sales_orders import router as so_router
+from .routes_return_orders import router as return_orders_router
 from .routes_customers import router as customers_router
 from .routes_production_reports import router as pr_router
 from .routes_production_reports_reports import router as pr_reports_router
@@ -21,6 +22,7 @@ from .routes_users import router as users_router
 from .routes_bom import router as bom_router
 from .routes_fg_kit import router as fg_kit_router
 from .routes_sales_reports import router as sales_reports_router
+from .routes_print_jobs import router as print_jobs_router
 import traceback
 
 app = FastAPI(title=settings.APP_NAME)
@@ -86,6 +88,7 @@ app.include_router(products_router)
 app.include_router(inventory_router)
 app.include_router(po_router)
 app.include_router(so_router)
+app.include_router(return_orders_router)
 app.include_router(customers_router)
 app.include_router(pr_router)
 app.include_router(pr_reports_router)
@@ -95,6 +98,7 @@ app.include_router(users_router)
 app.include_router(bom_router)
 app.include_router(fg_kit_router)
 app.include_router(sales_reports_router)
+app.include_router(print_jobs_router)
 
 @app.get("/health")
 def health():

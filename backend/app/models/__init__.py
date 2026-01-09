@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, date
 from sqlalchemy import String, Integer, Date, DateTime, ForeignKey, Boolean, Text, Enum, REAL, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from .db import Base
+from ..db import Base
 
 class Role(str, enum.Enum):
     admin = "admin"
@@ -234,6 +234,7 @@ class SalesOrder(Base):
     is_paid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     paid_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    discount_amount: Mapped[float | None] = mapped_column(REAL, nullable=True, default=0.0)  # 折讓金額
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -323,3 +324,60 @@ class BomItem(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
+class ReturnOrderStatus(str, enum.Enum):
+    pending = "pending"  # 待確認
+    confirmed = "confirmed"  # 已確認
+    stocked = "stocked"  # 已入倉
+
+
+class ReturnOrder(Base):
+    __tablename__ = "return_orders"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    return_no: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    customer_name: Mapped[str] = mapped_column(String(120))
+    source_so_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"), index=True)  # 來源銷貨單ID
+    doc_date: Mapped[datetime | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending"  # pending / confirmed / stocked
+    )
+    is_stocked: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否已入倉
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    items: Mapped[list["ReturnOrderItem"]] = relationship(
+        back_populates="return_order", cascade="all, delete-orphan"
+    )
+
+
+class ReturnOrderItem(Base):
+    __tablename__ = "return_order_items"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    return_order_id: Mapped[int] = mapped_column(ForeignKey("return_orders.id"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), index=True)
+    qty: Mapped[float] = mapped_column(REAL)
+    unit: Mapped[str] = mapped_column(String(20))
+    unit_price: Mapped[float] = mapped_column(REAL)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    return_order: Mapped["ReturnOrder"] = relationship(back_populates="items")
+
+
+class RefundRecord(Base):
+    __tablename__ = "refund_records"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    return_order_id: Mapped[int] = mapped_column(ForeignKey("return_orders.id"), index=True)
+    sales_order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"), index=True)
+    refund_amount: Mapped[float] = mapped_column(REAL)  # 退款金額
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+# 導入新的 PrintJob model
+from .print_job import PrintJob

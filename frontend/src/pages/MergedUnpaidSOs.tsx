@@ -4,6 +4,7 @@ import { ProDescriptions } from '@ant-design/pro-components';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 import { api } from '../app/api';
+import { printFromPath } from '../app/printService';
 import { useNavigate } from 'react-router-dom';
 import { useResponsive } from '../hooks/useResponsive';
 
@@ -98,18 +99,17 @@ export default function MergedUnpaidSOs() {
         params.shipped_at_from = dateRange[0].format('YYYY-MM-DD');
         params.shipped_at_to = dateRange[1].format('YYYY-MM-DD');
       }
-      const blob = await api.printMergedUnpaidSOs(params);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `合併未付款銷貨單_${selectedCustomer}_${dateRange?.[0]?.format('YYYYMMDD') || ''}_${dateRange?.[1]?.format('YYYYMMDD') || ''}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      message.success('PDF 下載成功');
+      const queryString = new URLSearchParams(params).toString();
+      const filename = `合併未付款銷貨單_${selectedCustomer}_${dateRange?.[0]?.format('YYYYMMDD') || ''}_${dateRange?.[1]?.format('YYYYMMDD') || ''}.pdf`;
+      
+      await printFromPath(`/sales-orders/merged-unpaid/print.pdf?${queryString}`, {
+        encoding: 'cp950',
+        copies: 1,
+        alsoDownload: false,
+        filename,
+      });
     } catch (e: any) {
-      message.error('列印失敗：' + (e.message || '未知錯誤'));
+      message.error('列印任務發送失敗：' + (e.message || '未知錯誤'));
     }
   };
 

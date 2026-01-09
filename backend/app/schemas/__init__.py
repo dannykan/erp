@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, field_validator
 from datetime import date, datetime
 from typing import List, Optional
-from .models import OrderStatus, WorkOrderStatus, Role
+from ..models import OrderStatus, WorkOrderStatus, Role
 
 class Token(BaseModel):
     access_token: str
@@ -332,6 +332,7 @@ class SOView(BaseModel):
     is_paid: bool = False
     paid_at: Optional[datetime] = None
     paid_by_id: Optional[int] = None
+    discount_amount: Optional[float] = None  # 折讓金額
     items: List[SOItemView]
 
 class SOPaged(BaseModel):
@@ -551,7 +552,65 @@ class BomItemOut(BaseModel):
         from_attributes = True
 
 class BomUpsertIn(BaseModel):
-    items: List[BomItemIn]  # 整包覆蓋 BOM
+    items: List[BomItemIn]
+
+
+# ===== 退貨單 =====
+class ReturnOrderItemIn(BaseModel):
+    source_so_item_id: int  # 來源銷貨單明細ID
+    qty: float
+    unit: str
+    unit_price: float
+    note: Optional[str] = None
+
+class ReturnOrderCreate(BaseModel):
+    customer_name: str
+    source_so_id: int
+    doc_date: Optional[date] = None
+    note: Optional[str] = None
+    is_stocked: bool = False  # 是否直接入倉
+    items: List[ReturnOrderItemIn]
+
+class ReturnOrderItemView(BaseModel):
+    id: int
+    product_id: int
+    product_sku: Optional[str] = None
+    product_name: str
+    qty: float
+    unit: str
+    unit_price: float
+    note: str
+    class Config:
+        from_attributes = True
+
+class ReturnOrderView(BaseModel):
+    id: int
+    return_no: str
+    customer_name: str
+    source_so_id: int
+    doc_date: Optional[date] = None
+    note: Optional[str] = None
+    status: str
+    is_stocked: bool
+    created_at: datetime
+    created_by_id: Optional[int] = None
+    items: List[ReturnOrderItemView]
+    class Config:
+        from_attributes = True
+
+class ReturnOrderOut(BaseModel):
+    id: int
+    return_no: str
+    customer_name: str
+    source_so_id: int
+    doc_date: Optional[date] = None
+    note: Optional[str] = None
+    status: str
+    is_stocked: bool
+    created_at: datetime
+    items: List[ReturnOrderItemView]
+    class Config:
+        from_attributes = True  # 整包覆蓋 BOM
 
 class FGKitBomItemIn(BaseModel):
     raw_product_id: int
@@ -586,3 +645,6 @@ class FgKitCreateOut(BaseModel):
 # Forward references rebuild for Pydantic v2
 SOPaged.model_rebuild()
 
+
+# Import new schemas
+from .print_jobs import PrintJobCreate, PrintJobOut, PrintAckIn

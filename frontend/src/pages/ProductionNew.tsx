@@ -7,6 +7,7 @@ import type { ProColumns } from '@ant-design/pro-components';
 import { api } from '../app/api';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
+import FactoryProductSelectionModal from '../components/FactoryProductSelectionModal';
 
 type Product = { id: number; sku?: string; name: string; spec?: string; unit: string; base_unit?: string; product_type?: string; is_active?: boolean; };
 
@@ -31,6 +32,8 @@ export default function ProductionNew() {
   const [editableKeys, setEditableKeys] = useState<React.Key[]>([]);
   const [loadingClone, setLoadingClone] = useState(false);
   const [quick, setQuick] = useState('');
+  const [productSelectionModalOpen, setProductSelectionModalOpen] = useState(false);
+  const [activeRowKeyForProductSelect, setActiveRowKeyForProductSelect] = useState<string | undefined>();
 
   useEffect(() => {
     (async () => {
@@ -39,9 +42,13 @@ export default function ProductionNew() {
     })();
   }, []);
 
-  // 生產回報只能選 FG（成品）
+  // 生產回報只能選 FG（成品），且只選竹筷類別
   const fgProducts = useMemo(
-    () => products.filter(p => p.product_type === 'FG' && p.is_active !== false),
+    () => products.filter(p => 
+      p.product_type === 'FG' && 
+      p.is_active !== false &&
+      p.name.includes('[ 竹筷 ]')
+    ),
     [products],
   );
 
@@ -112,9 +119,34 @@ export default function ProductionNew() {
     {
       title: '品項',
       dataIndex: 'product_id',
-      valueType: 'select',
-      fieldProps: { options: productOptions, showSearch: true, optionFilterProp: 'label' },
       width: 360,
+      renderFormItem: (_, { record, isEditable }) => {
+        if (!isEditable) return null;
+        const p = fgProducts.find(p => p.id === record?.product_id);
+        return (
+          <Button
+            type={p ? 'default' : 'primary'}
+            onClick={() => {
+              setActiveRowKeyForProductSelect(String(record?.id || ''));
+              setProductSelectionModalOpen(true);
+            }}
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            {p ? (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                {p.name}{p.brand ? ` ${p.brand}` : ''}
+              </span>
+            ) : (
+              '選擇品項'
+            )}
+          </Button>
+        );
+      },
+      render: (_: any, record: any) => {
+        const p = fgProducts.find(p => p.id === record.product_id);
+        if (!p) return '-';
+        return `${p.name}${p.brand ? ` ${p.brand}` : ''}`;
+      },
     },
     { title: '數量', dataIndex: 'qty', valueType: 'digit', width: 110 },
     {
@@ -349,6 +381,47 @@ export default function ProductionNew() {
 
         <ProFormTextArea name="note" label="備註（可空）" fieldProps={{ rows: 3 }} />
       </ProForm>
+
+      <FactoryProductSelectionModal
+        open={productSelectionModalOpen}
+        products={fgProducts}
+        onClose={() => {
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
+        }}
+        onSelect={(productId) => {
+          if (activeRowKeyForProductSelect) {
+            setItems((prev) =>
+              prev.map((item) => {
+                if (String(item.id) === activeRowKeyForProductSelect) {
+                  const selectedProduct = fgProducts.find(p => p.id === productId);
+                  return {
+                    ...item,
+                    product_id: productId,
+                    unit: selectedProduct?.base_unit || selectedProduct?.unit || '件',
+                  };
+                }
+                return item;
+              })
+            );
+          } else {
+            // 新增一行
+            const selectedProduct = fgProducts.find(p => p.id === productId);
+            const newItem: Item = {
+              id: Date.now(),
+              product_id: productId,
+              spec_text: null,
+              qty: 1,
+              unit: selectedProduct?.base_unit || selectedProduct?.unit || '件',
+              note: null,
+            };
+            setItems((prev) => [...prev, newItem]);
+            setEditableKeys((prev) => [...prev, newItem.id]);
+          }
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
+        }}
+      />
     </Card>
   );
 }

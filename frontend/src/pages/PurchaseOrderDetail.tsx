@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Descriptions, Table, Button, Space, message } from 'antd';
 import { api } from '../app/api';
+import { printFromPath } from '../app/printService';
 import { useParams, useNavigate } from 'react-router-dom';
 
 export default function PurchaseOrderDetail() {
@@ -23,13 +24,11 @@ export default function PurchaseOrderDetail() {
           <Button onClick={() => nav(-1)}>返回</Button>
           <Button
             onClick={async () => {
-              try {
-                const blob = await api.printPO(poId);
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank');
-              } catch {
-                message.error('列印失敗');
-              }
+              await printFromPath(`/purchase-orders/${poId}/print`, {
+                encoding: 'cp950',
+                copies: 1,
+                alsoDownload: false,
+              });
             }}
           >
             列印 PDF

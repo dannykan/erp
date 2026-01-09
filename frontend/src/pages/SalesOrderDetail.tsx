@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Descriptions, Table, Button, Space, message, Tag, Modal, Input, Checkbox } from 'antd';
+import { Card, Descriptions, Table, Button, Space, message, Tag, Modal, Input, Checkbox, InputNumber } from 'antd';
 import { api } from '../app/api';
+import { printFromPath, sendToPrintQueue } from '../app/printService';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useResponsive } from '../hooks/useResponsive';
 
@@ -15,6 +16,8 @@ export default function SalesOrderDetail() {
   const [shipNote, setShipNote] = useState('');
   const [logisticsNo, setLogisticsNo] = useState('');
   const [autoPrintShipping, setAutoPrintShipping] = useState(true);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
 
   const downloadBlob = (blob: Blob, filename: string) => {
     const url = window.URL.createObjectURL(blob);
@@ -96,16 +99,19 @@ export default function SalesOrderDetail() {
       setLogisticsNo('');
       await reload();
       
-      // 如果勾选了自动下载，则下载出货单 PDF
+      // 如果勾选了自动列印，則發送到列印佇列
       if (autoPrintShipping) {
         try {
-          const blob = await api.printShippingPdf(soId);
-          // 清理文件名中的特殊字符
           const safeSoNo = (soNo || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
-          downloadBlob(blob, `出貨單_${safeSoNo}.pdf`);
+          await printFromPath(`/sales-orders/${soId}/shipping.pdf`, {
+            encoding: 'cp950',
+            copies: 1,
+            alsoDownload: false,
+            filename: `出貨單_${safeSoNo}.pdf`,
+          });
         } catch (err: any) {
-          // 下载失败不影响出货成功，只提示（避免现场以为出货失败而重按）
-          message.warning('出貨成功，但下載出貨單失敗，請到已出貨單點列印');
+          // 列印失敗不影響出貨成功，只提示（避免現場以為出貨失敗而重按）
+          message.warning('出貨成功，但列印任務發送失敗，請到已出貨單點列印');
         }
       }
     } catch (err: any) {
@@ -115,46 +121,64 @@ export default function SalesOrderDetail() {
 
   const handlePrintPicklist = async () => {
     try {
-      const blob = await api.printPicklistPdf(soId);
-      // 清理文件名中的特殊字符
       const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
-      downloadBlob(blob, `揀貨單_${safeSoNo}.pdf`);
+      await printFromPath(`/sales-orders/${soId}/picklist.pdf`, {
+        encoding: 'cp950',
+        copies: 1,
+        alsoDownload: false,
+        filename: `揀貨單_${safeSoNo}.pdf`,
+      });
     } catch (err: any) {
       const errMsg = err.message || '';
       if (errMsg.includes('400') || errMsg.includes('status') || errMsg.includes('PICKED') || errMsg.includes('SHIPPED')) {
         message.error('狀態不符，請刷新頁面後再試');
         reload(); // 自動刷新
       } else {
-        message.error('列印失敗');
+        message.error('列印任務發送失敗');
       }
     }
   };
 
   const handlePrintShipping = async () => {
     try {
-      const blob = await api.printShippingPdf(soId);
-      // 清理文件名中的特殊字符
       const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
-      downloadBlob(blob, `出貨單_${safeSoNo}.pdf`);
+      await printFromPath(`/sales-orders/${soId}/shipping.pdf`, {
+        encoding: 'cp950',
+        copies: 1,
+        alsoDownload: false,
+        filename: `出貨單_${safeSoNo}.pdf`,
+      });
     } catch (err: any) {
       const errMsg = err.message || '';
       if (errMsg.includes('400') || errMsg.includes('status') || errMsg.includes('SHIPPED')) {
         message.error('狀態不符，請刷新頁面後再試');
         reload(); // 自動刷新
       } else {
-        message.error('列印失敗');
+        message.error('列印任務發送失敗');
       }
     }
   };
 
   const handleConfirmPayment = async () => {
     try {
-      await api.confirmPayment(soId);
+      await api.confirmPayment(soId, discountAmount);
       message.success('已確認收款');
+      setPaymentModalOpen(false);
+      setDiscountAmount(0);
       reload();
     } catch (err: any) {
       message.error(err.message || '確認收款失敗');
     }
+  };
+
+  // 計算銷貨總金額
+  const calculateTotalAmount = () => {
+    if (!so?.items) return 0;
+    return so.items.reduce((sum: number, it: any) => {
+      const qty = Number(it.qty || 0);
+      const price = Number(it.unit_price || 0);
+      return sum + (qty * price);
+    }, 0);
   };
 
   return (
@@ -198,7 +222,10 @@ export default function SalesOrderDetail() {
                   <Button
                     type="primary"
                     size={isMobile ? 'small' : 'middle'}
-                    onClick={handleConfirmPayment}
+                    onClick={() => {
+                      setDiscountAmount(0);
+                      setPaymentModalOpen(true);
+                    }}
                     style={{ backgroundColor: '#52c41a', borderColor: '#52c41a' }}
                   >
                     確認收款
@@ -209,13 +236,11 @@ export default function SalesOrderDetail() {
             <Button
               size={isMobile ? 'small' : 'middle'}
               onClick={async () => {
-                try {
-                  const blob = await api.printSO(soId);
-                  const url = URL.createObjectURL(blob);
-                  window.open(url, '_blank');
-                } catch {
-                  message.error('列印失敗');
-                }
+                await printFromPath(`/sales-orders/${soId}/print`, {
+                  encoding: 'cp950',
+                  copies: 1,
+                  alsoDownload: false,
+                });
               }}
             >
               列印 PDF
@@ -389,6 +414,54 @@ export default function SalesOrderDetail() {
           </div>
         </Space>
       </Modal>
+
+        <Modal
+          title="確認收款"
+          open={paymentModalOpen}
+          onOk={handleConfirmPayment}
+          onCancel={() => {
+            setPaymentModalOpen(false);
+            setDiscountAmount(0);
+          }}
+          okText="確認收款"
+          cancelText="取消"
+          width={500}
+        >
+          <div style={{ padding: '20px 0' }}>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>銷貨總金額：</div>
+              <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>
+                ${calculateTotalAmount().toFixed(2)}
+              </div>
+            </div>
+            
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>折讓金額：</div>
+              <InputNumber
+                style={{ width: '100%' }}
+                value={discountAmount}
+                onChange={(value) => setDiscountAmount(value || 0)}
+                min={0}
+                max={calculateTotalAmount()}
+                precision={2}
+                prefix="$"
+                placeholder="請輸入折讓金額"
+              />
+            </div>
+
+            <div style={{ 
+              padding: '16px', 
+              backgroundColor: '#f5f5f5', 
+              borderRadius: 4,
+              marginTop: 16
+            }}>
+              <div style={{ fontSize: 14, color: '#666', marginBottom: 8 }}>實際收款金額：</div>
+              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#52c41a' }}>
+                ${(calculateTotalAmount() - discountAmount).toFixed(2)}
+              </div>
+            </div>
+          </div>
+        </Modal>
     </>
   );
 }

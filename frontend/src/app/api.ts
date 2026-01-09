@@ -78,10 +78,11 @@ export const api = {
     request(`/work-orders/${id}/complete`, { method: 'POST', body: JSON.stringify(payload) }),
   printWorkOrder: (id: number) => request(`/work-orders/${id}/print`),
 
-  listProducts: (params: { q?: string; active?: string } = {}) => {
+  listProducts: (params: { q?: string; active?: string; limit?: number } = {}) => {
     const usp = new URLSearchParams();
     if (params.q) usp.set('q', params.q);
     if (params.active !== undefined) usp.set('active', params.active);
+    if (params.limit !== undefined) usp.set('limit', String(params.limit));
     const qs = usp.toString() ? `?${usp.toString()}` : '';
     return request(`/products${qs}`);
   },
@@ -126,7 +127,14 @@ export const api = {
     }
     return request(`/sales-orders/${id}/ship`, opts);
   },
-  confirmPayment: (id: number) => request(`/sales-orders/${id}/confirm-payment`, { method: 'POST' }),
+  confirmPayment: (id: number, discountAmount: number = 0) => {
+    const params = new URLSearchParams();
+    if (discountAmount > 0) {
+      params.set('discount_amount', String(discountAmount));
+    }
+    const queryString = params.toString();
+    return request(`/sales-orders/${id}/confirm-payment${queryString ? '?' + queryString : ''}`, { method: 'POST' });
+  },
   printPicklistPdf: (id: number) => request(`/sales-orders/${id}/picklist.pdf`),
   printShippingPdf: (id: number) => request(`/sales-orders/${id}/shipping.pdf`),
   getMergedUnpaidSOs: (params: {
@@ -271,5 +279,23 @@ export const api = {
 
   // FG Kit
   createFGKit: (payload: any) => request('/fg-kit', { method: 'POST', body: JSON.stringify(payload) } as any),
+
+  // Return Orders
+  listReturnOrders: (params?: { customer_name?: string; status?: string }) => {
+    const usp = new URLSearchParams();
+    if (params?.customer_name) usp.set('customer_name', params.customer_name);
+    if (params?.status) usp.set('status', params.status);
+    const qs = usp.toString() ? `?${usp.toString()}` : '';
+    return request(`/return-orders${qs}`);
+  },
+  getReturnOrder: (id: number) => request(`/return-orders/${id}`),
+  createReturnOrder: (payload: any) =>
+    request('/return-orders', { method: 'POST', body: JSON.stringify(payload) }),
+  stockReturnOrder: (id: number) =>
+    request(`/return-orders/${id}/stock`, { method: 'POST' }),
+
+  // Print Jobs
+  createPrintJob: (payload: { kind: string; text: string; encoding?: string; copies?: number }) =>
+    request('/print-jobs', { method: 'POST', body: JSON.stringify(payload) }),
 };
 

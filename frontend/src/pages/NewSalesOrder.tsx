@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../app/useAuth';
 import CreateFGKitModal from '../components/CreateFGKitModal';
 import PickCommonItemsModal from '../components/PickCommonItemsModal';
+import ProductSelectionModal from '../components/ProductSelectionModal';
 
 type Product = { id: number; sku?: string; name: string; unit: string; base_unit?: string; product_type?: string; is_active?: boolean; quotation_unit?: string; pieces_per_case?: number; pack_quantity?: string; model?: string; brand?: string; size?: string; origin?: string; };
 
@@ -46,6 +47,8 @@ export default function NewSalesOrder() {
   const [selectedCustomerName, setSelectedCustomerName] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [soDataLoaded, setSoDataLoaded] = useState(false);
+  const [productSelectionModalOpen, setProductSelectionModalOpen] = useState(false);
+  const [activeRowKeyForProductSelect, setActiveRowKeyForProductSelect] = useState<string | undefined>();
 
   const canCreateFGKit = useMemo(() => {
     return me?.role === 'admin' || me?.role === 'supervisor';
@@ -53,7 +56,8 @@ export default function NewSalesOrder() {
 
   useEffect(() => {
     (async () => {
-      const ps = await api.listProducts({});
+      // 傳遞較大的 limit 以獲取所有產品（後端最大限制是 500，但我們傳 1000 讓後端處理）
+      const ps = await api.listProducts({ limit: 1000 });
       setProducts(ps);
 
       const inv = await api.listInventory({});
@@ -207,42 +211,46 @@ export default function NewSalesOrder() {
     {
       title: '品名規格',
       dataIndex: 'product_id',
-      valueType: 'select',
-      fieldProps: {
-        options: saleProducts.map(p => ({
-          label: `${p.sku ? p.sku + ' ' : ''}${p.name}${p.spec ? ' ' + p.spec : ''}`,
-          value: p.id,
-        })),
-        popupMatchSelectWidth: false,
-        styles: {
-          popup: {
-            root: {
-              maxWidth: '600px',
-            },
-          },
-        },
-        listHeight: 400,
-        classNames: {
-          popup: {
-            root: 'product-select-dropdown',
-          },
-        },
-      },
+      valueType: 'text',
       width: 300,
+      renderFormItem: (_, { record, isEditable }) => {
+        if (!isEditable) return null;
+        const p = saleProducts.find(p => p.id === record?.product_id);
+        return (
+          <Button
+            type={p ? 'default' : 'primary'}
+            onClick={() => {
+              setActiveRowKeyForProductSelect(String(record?.id || ''));
+              setProductSelectionModalOpen(true);
+            }}
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            {p ? (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                {p.name}{p.brand ? ` ${p.brand}` : ''}
+              </span>
+            ) : (
+              '選擇品項'
+            )}
+          </Button>
+        );
+      },
       render: (_, row) => {
         const p = saleProducts.find(p => p.id === row.product_id);
         if (!p) return '-';
-        const parts: string[] = [];
-        if (p.sku) parts.push(p.sku);
-        if (p.name) parts.push(p.name);
-        if (p.spec) parts.push(p.spec);
+        // 顯示格式：[ 類別 ] 規格 包裝 包裝膜
+        // 如果產品名稱已經包含完整格式，直接使用；否則組合顯示
+        let displayName = p.name;
+        if (p.brand && !displayName.includes(p.brand)) {
+          displayName = `${displayName} ${p.brand}`;
+        }
         return (
           <div style={{ 
             whiteSpace: 'normal', 
             wordBreak: 'break-word',
             lineHeight: '1.5',
           }}>
-            {parts.join(' ')}
+            {displayName}
           </div>
         );
       },
@@ -544,7 +552,7 @@ export default function NewSalesOrder() {
         <div style={{ fontSize: 12, color: '#999', marginBottom: 16 }}>
           歷史帶入依客戶名稱完全匹配
         </div>
-        <ProFormDatePicker name="doc_date" label="單據日期" />
+        <ProFormDatePicker name="doc_date" label="出貨日期" />
         <ProFormText name="note" label="備註" />
 
         <Divider />
@@ -565,12 +573,16 @@ export default function NewSalesOrder() {
                 if (!row.id) {
                   row.id = Date.now() + Math.random();
                 }
-                const p = saleProducts.find(p => p.id === row.product_id);
+                // 保留原有的 product_id，不要重置
+                const existingItem = items.find(item => item.id === row.id);
+                const productId = row.product_id ?? existingItem?.product_id;
+                
+                const p = saleProducts.find(p => p.id === productId);
                 // 當 product_id 變更時，自動更新 unit、unit_price 和 price_unit
-                const hint = customerPriceMap[row.product_id ?? 0];
-                const newUnit = getProductUnit(p) || row.unit || '個';
+                const hint = customerPriceMap[productId ?? 0];
+                const newUnit = getProductUnit(p) || row.unit || existingItem?.unit || '個';
                 // 如果 price_unit 還沒有設置或是預設值 '件'，自動帶入商品的 quotation_unit（但可以編輯）
-                const currentPriceUnit = row.price_unit;
+                const currentPriceUnit = row.price_unit ?? existingItem?.price_unit;
                 const isDefaultValue = !currentPriceUnit || currentPriceUnit === '' || currentPriceUnit === '件';
                 const newPriceUnit = isDefaultValue 
                   ? (hint?.price_unit || p?.quotation_unit || '件')
@@ -581,10 +593,11 @@ export default function NewSalesOrder() {
                 }
                 return {
                   ...row,
+                  product_id: productId, // 確保保留 product_id
                   unit: newUnit,
                   price_unit: newPriceUnit,
-                  unit_price: hint?.unit_price != null ? hint.unit_price : (row.unit_price || 0),
-                  case_qty: row.case_qty || row.qty || 0,
+                  unit_price: row.unit_price ?? existingItem?.unit_price ?? (hint?.unit_price ?? 0),
+                  case_qty: row.case_qty || row.qty || existingItem?.case_qty || 0,
                 };
               });
             setItems(next);
@@ -630,52 +643,76 @@ export default function NewSalesOrder() {
               // 確保 record 有 id，如果沒有則生成一個
               const recordId = record.id || Date.now() + Math.random();
               
+              // 獲取當前行的原始數據，用於保留未變更的字段
+              const existingItem = items.find(item => item.id === recordId);
+              
               // 當 product_id 變更時，自動更新該行的 unit、unit_price 和 price_unit
               const updated = recordList
                 .filter(row => row != null) // 過濾掉 undefined 或 null 的行
                 .map(row => {
                   // 確保 row 有 id，如果沒有則生成一個
                   const rowId = row.id || Date.now() + Math.random();
+                  const existingRow = items.find(item => item.id === rowId);
                   const rowWithId = { ...row, id: rowId };
                   
-                  if (rowId === recordId && record.product_id !== undefined) {
-                    const p = saleProducts.find(p => p.id === record.product_id);
-                    const hint = customerPriceMap[record.product_id];
-                    const newUnit = getProductUnit(p) || rowWithId.unit || '個';
-                    // 當選擇商品時，如果 price_unit 還沒有被手動設置過，則自動帶入商品的 quotation_unit
-                    const currentPriceUnit = rowWithId.price_unit;
-                    // 檢查是否是初始狀態（空、undefined、null 或預設值 '件'）
-                    const isInitialState = !currentPriceUnit || currentPriceUnit === '' || currentPriceUnit === '件';
-                    // 優先使用 hint 的 price_unit，其次使用商品的 quotation_unit
-                    const autoPriceUnit = hint?.price_unit || p?.quotation_unit;
-                    // 如果商品有報價單位且是初始狀態，則使用商品的報價單位
-                    const newPriceUnit = (isInitialState && autoPriceUnit)
-                      ? autoPriceUnit
-                      : (currentPriceUnit || autoPriceUnit || '件');
+                  // 如果是當前編輯的行
+                  if (rowId === recordId) {
+                    // 如果 product_id 變更了，更新相關字段
+                    if (record.product_id !== undefined && record.product_id !== existingItem?.product_id) {
+                      const p = saleProducts.find(p => p.id === record.product_id);
+                      const hint = customerPriceMap[record.product_id];
+                      const newUnit = getProductUnit(p) || rowWithId.unit || '個';
+                      // 當選擇商品時，如果 price_unit 還沒有被手動設置過，則自動帶入商品的 quotation_unit
+                      const currentPriceUnit = rowWithId.price_unit;
+                      // 檢查是否是初始狀態（空、undefined、null 或預設值 '件'）
+                      const isInitialState = !currentPriceUnit || currentPriceUnit === '' || currentPriceUnit === '件';
+                      // 優先使用 hint 的 price_unit，其次使用商品的 quotation_unit
+                      const autoPriceUnit = hint?.price_unit || p?.quotation_unit;
+                      // 如果商品有報價單位且是初始狀態，則使用商品的報價單位
+                      const newPriceUnit = (isInitialState && autoPriceUnit)
+                        ? autoPriceUnit
+                        : (currentPriceUnit || autoPriceUnit || '件');
+                      return {
+                        ...rowWithId,
+                        product_id: record.product_id,
+                        unit: newUnit,
+                        price_unit: newPriceUnit,
+                        unit_price: hint?.unit_price != null ? hint.unit_price : (rowWithId.unit_price || 0),
+                        case_qty: rowWithId.case_qty || rowWithId.qty || 0,
+                      };
+                    }
+                    // 如果 product_id 沒有變更，保留原有的 product_id
+                    const preservedProductId = record.product_id !== undefined 
+                      ? record.product_id 
+                      : (existingItem?.product_id ?? rowWithId.product_id);
+                    
+                    // 當 unit 變更時，若 price_unit 為空 → price_unit = unit
+                    if (record.unit !== undefined && !rowWithId.price_unit) {
+                      return {
+                        ...rowWithId,
+                        product_id: preservedProductId, // 保留 product_id
+                        price_unit: record.unit,
+                      };
+                    }
+                    // 當 case_qty 變更時，同步更新 qty
+                    if (record.case_qty !== undefined) {
+                      return {
+                        ...rowWithId,
+                        product_id: preservedProductId, // 保留 product_id
+                        qty: record.case_qty,
+                      };
+                    }
+                    // 其他字段變更時，保留 product_id
                     return {
                       ...rowWithId,
-                      product_id: record.product_id,
-                      unit: newUnit,
-                      price_unit: newPriceUnit,
-                      unit_price: hint?.unit_price != null ? hint.unit_price : (rowWithId.unit_price || 0),
-                      case_qty: rowWithId.case_qty || rowWithId.qty || 0,
+                      product_id: preservedProductId, // 保留 product_id
                     };
                   }
-                  // 當 unit 變更時，若 price_unit 為空 → price_unit = unit
-                  if (rowId === recordId && record.unit !== undefined && !rowWithId.price_unit) {
-                    return {
-                      ...rowWithId,
-                      price_unit: record.unit,
-                    };
-                  }
-                  // 當 case_qty 變更時，同步更新 qty
-                  if (rowId === recordId && record.case_qty !== undefined) {
-                    return {
-                      ...rowWithId,
-                      qty: record.case_qty,
-                    };
-                  }
-                  return rowWithId;
+                  // 其他行保持不變，但確保有 product_id
+                  return {
+                    ...rowWithId,
+                    product_id: rowWithId.product_id ?? existingRow?.product_id,
+                  };
                 });
               setItems(updated);
             },
@@ -874,6 +911,37 @@ export default function NewSalesOrder() {
 
             return next;
           });
+        }}
+      />
+
+      <ProductSelectionModal
+        open={productSelectionModalOpen}
+        products={saleProducts}
+        onClose={() => {
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
+        }}
+        onSelect={(productId) => {
+          if (activeRowKeyForProductSelect) {
+            setItems((prev) =>
+              prev.map((item) => {
+                if (String(item.id) === activeRowKeyForProductSelect) {
+                  const selectedProduct = saleProducts.find(p => p.id === productId);
+                  const hint = customerPriceMap[productId];
+                  return {
+                    ...item,
+                    product_id: productId,
+                    unit: getProductUnit(selectedProduct) || item.unit || '個',
+                    price_unit: hint?.price_unit || selectedProduct?.quotation_unit || item.price_unit || '件',
+                    unit_price: hint?.unit_price != null ? hint.unit_price : (item.unit_price || 0),
+                  };
+                }
+                return item;
+              })
+            );
+          }
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
         }}
       />
       </Card>

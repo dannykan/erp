@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./app.db"
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     PUBLIC_BASE_URL: str = "http://localhost:8000"
+    PRINT_AGENT_TOKEN: str = "26980288"  # Bearer token for print agent authentication
 
     def cors_list(self) -> List[str]:
         return [x.strip() for x in self.CORS_ORIGINS.split(",") if x.strip()]

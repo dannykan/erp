@@ -5,8 +5,9 @@ import { EditableProTable } from '@ant-design/pro-components';
 import type { ProColumns } from '@ant-design/pro-components';
 import { api } from '../app/api';
 import { useNavigate } from 'react-router-dom';
+import ProductSelectionModal from '../components/ProductSelectionModal';
 
-type Product = { id: number; sku?: string; name: string; unit: string; base_unit?: string; quotation_unit?: string; pieces_per_case?: number; spec?: string; };
+type Product = { id: number; sku?: string; name: string; unit: string; base_unit?: string; quotation_unit?: string; pieces_per_case?: number; spec?: string; product_type?: string; is_active?: boolean; brand?: string; };
 
 // 統一獲取商品單位：優先使用 base_unit
 function getProductUnit(p?: Product): string {
@@ -19,6 +20,8 @@ export default function NewPurchaseOrder() {
   const [products, setProducts] = useState<Product[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [editableKeys, setEditableKeys] = useState<React.Key[]>([]);
+  const [productSelectionModalOpen, setProductSelectionModalOpen] = useState(false);
+  const [activeRowKeyForProductSelect, setActiveRowKeyForProductSelect] = useState<string | undefined>();
   
   // 收集所有商品的報價單位作為選項
   const priceUnitOptions = useMemo(() => {
@@ -35,10 +38,17 @@ export default function NewPurchaseOrder() {
 
   useEffect(() => {
     (async () => {
-      const ps = await api.listProducts({});
+      // 傳遞較大的 limit 以獲取所有產品
+      const ps = await api.listProducts({ limit: 1000 });
       setProducts(ps);
     })();
   }, []);
+
+  // 進貨單可以選所有類別的產品（FG、TRADE、RAW）
+  const purchaseProducts = useMemo(
+    () => products.filter(p => p.is_active !== false),
+    [products],
+  );
 
   const columns: ProColumns<Item>[] = [
     {
@@ -51,29 +61,33 @@ export default function NewPurchaseOrder() {
     {
       title: '品名規格',
       dataIndex: 'product_id',
-      valueType: 'select',
       width: 250,
-      fieldProps: {
-        options: products.map(p => ({
-          label: `${p.sku ? p.sku + ' ' : ''}${p.name}${p.spec ? ' ' + p.spec : ''}`,
-          value: p.id,
-        })),
-        popupMatchSelectWidth: false,
-        style: { minWidth: 400 },
-        styles: {
-          popup: {
-            root: {
-              maxWidth: '600px',
-            },
-          },
-        },
+      renderFormItem: (_, { record, isEditable }) => {
+        if (!isEditable) return null;
+        const p = purchaseProducts.find(p => p.id === record?.product_id);
+        return (
+          <Button
+            type={p ? 'default' : 'primary'}
+            onClick={() => {
+              setActiveRowKeyForProductSelect(String(record?.id || ''));
+              setProductSelectionModalOpen(true);
+            }}
+            style={{ width: '100%', textAlign: 'left' }}
+          >
+            {p ? (
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                {p.name}{p.brand ? ` ${p.brand}` : ''}
+              </span>
+            ) : (
+              '選擇品項'
+            )}
+          </Button>
+        );
       },
       render: (_: any, record: any) => {
-        const p = products.find(p => p.id === record.product_id);
+        const p = purchaseProducts.find(p => p.id === record.product_id);
         if (!p) return '-';
-        const name = p.name || '';
-        const spec = p.spec || '';
-        return spec ? `${name} ${spec}` : name;
+        return `${p.name}${p.brand ? ` ${p.brand}` : ''}`;
       },
     },
     {
@@ -202,7 +216,7 @@ export default function NewPurchaseOrder() {
                 if (!row.id) {
                   row.id = Date.now() + Math.random();
                 }
-                const p = products.find(p => p.id === row.product_id);
+                const p = purchaseProducts.find(p => p.id === row.product_id);
                 if (p && row.product_id) {
                   // 如果 price_unit 還沒有設置或是預設值 '件'，自動帶入商品的 quotation_unit
                   const currentPriceUnit = row.price_unit;
@@ -253,7 +267,7 @@ export default function NewPurchaseOrder() {
                   const rowWithId = { ...row, id: rowId };
                   
                   if (rowId === recordId && record.product_id !== undefined && record.product_id !== null) {
-                    const p = products.find(p => p.id === record.product_id);
+                    const p = purchaseProducts.find(p => p.id === record.product_id);
                     if (p) {
                       // 當選擇商品時，如果 price_unit 還沒有被手動設置過，則自動帶入商品的 quotation_unit
                       const currentPriceUnit = rowWithId.price_unit;
@@ -301,6 +315,57 @@ export default function NewPurchaseOrder() {
           }}
         />
       </ProForm>
+
+      <ProductSelectionModal
+        open={productSelectionModalOpen}
+        products={purchaseProducts}
+        onClose={() => {
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
+        }}
+        onSelect={(productId) => {
+          if (activeRowKeyForProductSelect) {
+            setItems((prev) =>
+              prev.map((item) => {
+                if (String(item.id) === activeRowKeyForProductSelect) {
+                  const selectedProduct = purchaseProducts.find(p => p.id === productId);
+                  const currentPriceUnit = item.price_unit;
+                  const isDefaultValue = !currentPriceUnit || currentPriceUnit === '' || currentPriceUnit === '件';
+                  const newPriceUnit = (isDefaultValue && selectedProduct?.quotation_unit)
+                    ? selectedProduct.quotation_unit
+                    : (currentPriceUnit || selectedProduct?.quotation_unit || '件');
+                  return {
+                    ...item,
+                    product_id: productId,
+                    unit: getProductUnit(selectedProduct),
+                    price_unit: newPriceUnit,
+                    case_qty: item.case_qty ?? item.qty ?? 0,
+                  };
+                }
+                return item;
+              })
+            );
+          } else {
+            // 新增一行
+            const selectedProduct = purchaseProducts.find(p => p.id === productId);
+            const newItem: Item = {
+              id: Date.now(),
+              product_id: productId,
+              qty: 1,
+              case_qty: 1,
+              unit: getProductUnit(selectedProduct),
+              price_unit: selectedProduct?.quotation_unit || '件',
+              unit_price: 0,
+              note: '',
+              mark: '',
+            };
+            setItems((prev) => [...prev, newItem]);
+            setEditableKeys((prev) => [...prev, newItem.id]);
+          }
+          setProductSelectionModalOpen(false);
+          setActiveRowKeyForProductSelect(undefined);
+        }}
+      />
     </Card>
   );
 }

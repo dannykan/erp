@@ -276,7 +276,7 @@ export default function Products() {
           
           console.log('Products search params:', { params, q, active }); // 调试用
           
-          const data = await api.listProducts({ q, active });
+          const data = await api.listProducts({ q, active, limit: 1000 });
           return { data, success: true };
         }}
         columns={columns}
