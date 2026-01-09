@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response, Header
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_
+from sqlalchemy import select
 
-from app.schemas.print_jobs import PrintJobCreate, PrintJobOut, PrintAckIn
+from app.schemas.print_jobs import PrintJobCreate, PrintAckIn
 from app.models.print_job import PrintJob
 from app.db import get_db
 from app.config import settings
@@ -35,25 +35,22 @@ def create_print_job(payload: PrintJobCreate, db: Session = Depends(get_db)):
 
 
 # ===== (B) Windows Agent 拉任務 =====
-@router.get("/next", response_model=PrintJobOut)
+@router.get("/next", response_model=None)
 def get_next_job(
-    response: Response,
     db: Session = Depends(get_db),
     authorization: str | None = Header(default=None),
     x_agent_id: str | None = Header(default="win-agent"),
 ):
     require_agent(authorization)
 
-    # 允許撿回卡住的 processing（例如 Agent 當機）
     lock_timeout = datetime.utcnow() - timedelta(minutes=5)
 
-    # 1) 先找 queued
     job = db.execute(
         select(PrintJob).where(PrintJob.status == "queued").order_by(PrintJob.created_at.asc()).limit(1)
     ).scalar_one_or_none()
 
-    # 2) 找不到就找 lock 過久的 processing
     if not job:
+        from sqlalchemy import or_
         job = db.execute(
             select(PrintJob)
             .where(PrintJob.status == "processing")
@@ -63,8 +60,7 @@ def get_next_job(
         ).scalar_one_or_none()
 
     if not job:
-        response.status_code = 204
-        return  # type: ignore
+        return Response(status_code=204)
 
     job.status = "processing"
     job.locked_at = datetime.utcnow()
@@ -72,13 +68,13 @@ def get_next_job(
     db.add(job)
     db.commit()
 
-    return PrintJobOut(
-        id=job.id,
-        kind=job.kind,
-        text=job.text,
-        encoding=job.encoding,
-        copies=job.copies,
-    )
+    return {
+        "id": job.id,
+        "kind": job.kind,
+        "text": job.text,
+        "encoding": job.encoding,
+        "copies": job.copies,
+    }
 
 
 # ===== (C) Agent 回報結果 =====
