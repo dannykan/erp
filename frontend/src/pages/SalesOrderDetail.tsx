@@ -1,15 +1,19 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Card, Descriptions, Table, Button, Space, message, Tag, Modal, Input, Checkbox, InputNumber } from 'antd';
 import { api } from '../app/api';
 import { printFromPath, sendToPrintQueue } from '../app/printService';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useResponsive } from '../hooks/useResponsive';
+import { useFrontendPrintPreview } from '../hooks/useFrontendPrintPreview';
+import PrintTemplate from '../components/PrintTemplate';
 
 export default function SalesOrderDetail() {
   const { id } = useParams();
   const soId = Number(id);
   const nav = useNavigate();
   const { isMobile } = useResponsive();
+  const { showPreview, PrintPreview } = useFrontendPrintPreview();
+  const printTemplateRef = useRef<HTMLDivElement>(null);
   const [so, setSo] = useState<any>(null);
   const [stockMap, setStockMap] = useState<Record<string, number>>({});
   const [shipModalOpen, setShipModalOpen] = useState(false);
@@ -119,44 +123,24 @@ export default function SalesOrderDetail() {
     }
   };
 
-  const handlePrintPicklist = async () => {
-    try {
-      const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
-      await printFromPath(`/sales-orders/${soId}/picklist.pdf`, {
-        encoding: 'cp950',
-        copies: 1,
-        alsoDownload: false,
-        filename: `揀貨單_${safeSoNo}.pdf`,
-      });
-    } catch (err: any) {
-      const errMsg = err.message || '';
-      if (errMsg.includes('400') || errMsg.includes('status') || errMsg.includes('PICKED') || errMsg.includes('SHIPPED')) {
-        message.error('狀態不符，請刷新頁面後再試');
-        reload(); // 自動刷新
-      } else {
-        message.error('列印任務發送失敗');
-      }
-    }
+  const handlePrintPicklist = () => {
+    const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
+    showPreview(`/sales-orders/${soId}/picklist.pdf`, {
+      encoding: 'cp950',
+      copies: 1,
+      alsoDownload: false,
+      filename: `揀貨單_${safeSoNo}.pdf`,
+    });
   };
 
-  const handlePrintShipping = async () => {
-    try {
-      const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
-      await printFromPath(`/sales-orders/${soId}/shipping.pdf`, {
-        encoding: 'cp950',
-        copies: 1,
-        alsoDownload: false,
-        filename: `出貨單_${safeSoNo}.pdf`,
-      });
-    } catch (err: any) {
-      const errMsg = err.message || '';
-      if (errMsg.includes('400') || errMsg.includes('status') || errMsg.includes('SHIPPED')) {
-        message.error('狀態不符，請刷新頁面後再試');
-        reload(); // 自動刷新
-      } else {
-        message.error('列印任務發送失敗');
-      }
-    }
+  const handlePrintShipping = () => {
+    const safeSoNo = (so?.so_no || String(soId)).replace(/[\\/:*?"<>|]/g, '_');
+    showPreview(`/sales-orders/${soId}/shipping.pdf`, {
+      encoding: 'cp950',
+      copies: 1,
+      alsoDownload: false,
+      filename: `出貨單_${safeSoNo}.pdf`,
+    });
   };
 
   const handleConfirmPayment = async () => {
@@ -235,12 +219,15 @@ export default function SalesOrderDetail() {
             )}
             <Button
               size={isMobile ? 'small' : 'middle'}
-              onClick={async () => {
-                await printFromPath(`/sales-orders/${soId}/print`, {
-                  encoding: 'cp950',
-                  copies: 1,
-                  alsoDownload: false,
-                });
+              onClick={() => {
+                if (printTemplateRef.current) {
+                  showPreview(printTemplateRef.current, {
+                    copies: 1,
+                    filename: `銷貨單_${so.so_no || soId}.pdf`,
+                  });
+                } else {
+                  message.error('無法生成預覽，請刷新頁面後重試');
+                }
               }}
             >
               列印 PDF
@@ -462,6 +449,15 @@ export default function SalesOrderDetail() {
             </div>
           </div>
         </Modal>
+        <PrintPreview />
+        {/* 隱藏的列印模板（用於前端生成 PDF） */}
+        <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+          {so && (
+            <div ref={printTemplateRef}>
+              <PrintTemplate type="sales-order" data={so} />
+            </div>
+          )}
+        </div>
     </>
   );
 }

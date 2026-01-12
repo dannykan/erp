@@ -1,27 +1,87 @@
 import io
+import os
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+
+# 註冊支持中文的字體
+# 重要：CID 字體（如 STSong-Light）依賴 Adobe 的 Asian Language Packs，
+# 大多數 PDF 閱讀器（包括 PDF.js）不支持，會顯示為小黑塊
+# 因此我們必須使用 TTF 字體並嵌入到 PDF 中
+CHINESE_FONT = None
+CHINESE_FONT_BOLD = None
+
+# 只使用 TTF 字體（必須嵌入，CID 字體在所有閱讀器中都無法顯示）
+# 優先使用 Noto Sans CJK（專門為中日韓字符設計，完全支持中文）
+# 絕對不使用 CID 字體，因為它們依賴 Adobe Asian Language Packs
+font_paths = [
+    os.path.join(os.path.dirname(__file__), 'fonts', 'NotoSansCJK-Regular.ttf'),  # 項目內的字體文件
+    '/System/Library/Fonts/Supplemental/Arial Unicode.ttf',  # 系統字體備選
+]
+
+CHINESE_FONT = None
+CHINESE_FONT_BOLD = None
+
+for font_path in font_paths:
+    if os.path.exists(font_path) and font_path.endswith('.ttf'):
+        try:
+            print(f"[FONT] Attempting to register TTF font: {font_path}")
+            font = TTFont('ChineseFont', font_path)
+            pdfmetrics.registerFont(font)
+            CHINESE_FONT = 'ChineseFont'
+            CHINESE_FONT_BOLD = 'ChineseFont'
+            print(f"[FONT] ✅ Successfully registered TTF font: {font_path}")
+            if hasattr(font, 'face') and hasattr(font.face, 'name'):
+                print(f"[FONT]    Font face name: {font.face.name}")
+            # 測試字體是否真的可用
+            try:
+                test_canvas = canvas.Canvas(io.BytesIO())
+                test_canvas.setFont(CHINESE_FONT, 12)
+                test_canvas.drawString(0, 0, "測試")
+                print(f"[FONT] ✅ Font test successful")
+            except Exception as test_e:
+                print(f"[FONT] ⚠️  Font test failed: {test_e}")
+            break
+        except Exception as e:
+            print(f"[FONT] ❌ Failed to register font {font_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+
+# 如果 TTF 字體註冊失敗，使用 Helvetica（會顯示為方塊，但至少不會崩潰）
+if not CHINESE_FONT:
+    print("[FONT] ❌ CRITICAL: No TTF Chinese font available!")
+    print("[FONT] ❌ Chinese characters will display as squares in PDF")
+    CHINESE_FONT = 'Helvetica'
+    CHINESE_FONT_BOLD = 'Helvetica-Bold'
 
 def build_po_pdf(po_no: str, supplier_name: str, doc_date: str | None, items: list[dict], note: str | None) -> bytes:
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    c.setFont("Helvetica-Bold", 16)
+    # 確保使用正確的字體
+    if not CHINESE_FONT or CHINESE_FONT == 'Helvetica':
+        print(f"⚠️  WARNING: Using fallback font {CHINESE_FONT}, Chinese may not display correctly")
+    
+    c.setFont(CHINESE_FONT, 16)
     c.drawString(20*mm, h-20*mm, "進貨單 Purchase Order")
+    c.setFont("Courier-Bold", 16)  # 單號使用等寬字體
     c.drawRightString(w-20*mm, h-20*mm, po_no)
 
-    c.setFont("Helvetica", 11)
+    c.setFont(CHINESE_FONT, 11)
     y = h-35*mm
     c.drawString(20*mm, y, f"供應商：{supplier_name}")
     c.drawString(120*mm, y, f"日期：{doc_date or '-'}")
 
     y -= 12*mm
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(CHINESE_FONT, 11)
     c.drawString(20*mm, y, "明細")
     y -= 8*mm
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
 
     for it in items:
         # it: {product_name, qty, unit, note}
@@ -35,9 +95,9 @@ def build_po_pdf(po_no: str, supplier_name: str, doc_date: str | None, items: li
             y = h-20*mm
 
     y -= 6*mm
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(CHINESE_FONT, 10)
     c.drawString(20*mm, y, "備註：")
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
     c.drawString(35*mm, y, (note or "-")[:95])
 
     c.showPage()
@@ -50,13 +110,18 @@ def build_so_pdf(so_no: str, customer_name: str, doc_date: str | None, items: li
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    # 使用等寬字體以確保固定欄位寬度
-    c.setFont("Courier-Bold", 14)
+    # 確保使用正確的字體
+    if not CHINESE_FONT or CHINESE_FONT == 'Helvetica':
+        print(f"⚠️  WARNING: Using fallback font {CHINESE_FONT}, Chinese may not display correctly")
+    
+    # 使用支持中文的字體
+    c.setFont(CHINESE_FONT, 14)
     c.drawString(20*mm, h-20*mm, "估價 / 出貨單")
+    c.setFont("Courier-Bold", 14)  # 單號使用等寬字體
     c.drawRightString(w-20*mm, h-20*mm, so_no)
 
     # 客戶資訊區塊（固定位置）
-    c.setFont("Courier", 10)
+    c.setFont(CHINESE_FONT, 10)
     y = h-35*mm
     c.drawString(20*mm, y, f"客戶名稱：{customer_name}")
     y -= 6*mm
@@ -115,10 +180,10 @@ def build_so_pdf(so_no: str, customer_name: str, doc_date: str | None, items: li
         c.drawString(item_x + col_widths[0] + col_widths[1], y, mark[:10])
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2], y, price_unit[:8])
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3], y, str(pieces_per_case) if pieces_per_case else '-')
-        # 件數(箱數) 使用粗體
-        c.setFont("Courier-Bold", 9)
+        # 件數(箱數)
+        c.setFont(CHINESE_FONT, 9)
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4], y, str(int(case_qty)))
-        c.setFont("Courier", 9)
+        c.setFont(CHINESE_FONT, 9)
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5], y, f"NT${unit_price:.2f}")
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, f"NT${subtotal:.2f}")
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, note_text[:15])
@@ -128,7 +193,7 @@ def build_so_pdf(so_no: str, customer_name: str, doc_date: str | None, items: li
             c.showPage()
             y = h-20*mm
             # 新頁面重複表頭
-            c.setFont("Courier-Bold", 9)
+            c.setFont(CHINESE_FONT, 9)
             c.drawString(header_x, y, "項")
             c.drawString(header_x + col_widths[0], y, "品名規格")
             c.drawString(header_x + col_widths[0] + col_widths[1], y, "MARK")
@@ -139,19 +204,19 @@ def build_so_pdf(so_no: str, customer_name: str, doc_date: str | None, items: li
             c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, "小計")
             c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, "備註")
             y -= 8*mm
-            c.setFont("Courier", 9)
+            c.setFont(CHINESE_FONT, 9)
 
     # 底部總計（按照圖二格式：總件數、銷貨總金額）
     y -= 8*mm
-    c.setFont("Courier-Bold", 9)
+    c.setFont(CHINESE_FONT, 9)
     c.drawString(header_x, y, f"總件數：{int(total_case_qty)}{price_unit_used or '件'}")
     c.drawRightString(w - 20*mm, y, f"銷貨總金額：NT${total_amount:.2f}")
 
     y -= 10*mm
     if note:
-        c.setFont("Courier-Bold", 9)
+        c.setFont(CHINESE_FONT, 9)
         c.drawString(20*mm, y, "備註：")
-        c.setFont("Courier", 9)
+        c.setFont(CHINESE_FONT, 9)
         # 備註可能多行
         note_lines = (note or "").split('\n')
         for note_line in note_lines[:5]:  # 最多5行
@@ -170,20 +235,21 @@ def build_so_picklist_pdf(so_no: str, customer_name: str, doc_date: str | None, 
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    c.setFont("Helvetica-Bold", 16)
+    c.setFont(CHINESE_FONT, 16)
     c.drawString(20*mm, h-20*mm, "揀貨單 Pick List")
+    c.setFont("Courier-Bold", 16)  # 單號使用等寬字體
     c.drawRightString(w-20*mm, h-20*mm, so_no)
 
-    c.setFont("Helvetica", 11)
+    c.setFont(CHINESE_FONT, 11)
     y = h-35*mm
     c.drawString(20*mm, y, f"客戶：{customer_name}")
     c.drawString(120*mm, y, f"日期：{doc_date or '-'}")
 
     y -= 12*mm
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(CHINESE_FONT, 11)
     c.drawString(20*mm, y, "明細")
     y -= 8*mm
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
 
     for it in items:
         line = f"{it.get('product_name','')}  數量:{it.get('qty')} {it.get('unit','')}"
@@ -196,9 +262,9 @@ def build_so_picklist_pdf(so_no: str, customer_name: str, doc_date: str | None, 
             y = h-20*mm
 
     y -= 6*mm
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(CHINESE_FONT, 10)
     c.drawString(20*mm, y, "備註：")
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
     c.drawString(35*mm, y, (note or "-")[:95])
 
     c.showPage()
@@ -220,11 +286,12 @@ def build_so_shipping_pdf(
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    c.setFont("Helvetica-Bold", 16)
+    c.setFont(CHINESE_FONT, 16)
     c.drawString(20*mm, h-20*mm, "出貨單 Shipping Order")
+    c.setFont("Courier-Bold", 16)  # 單號使用等寬字體
     c.drawRightString(w-20*mm, h-20*mm, so_no)
 
-    c.setFont("Helvetica", 11)
+    c.setFont(CHINESE_FONT, 11)
     y = h-35*mm
     c.drawString(20*mm, y, f"客戶：{customer_name}")
     c.drawString(120*mm, y, f"日期：{doc_date or '-'}")
@@ -236,10 +303,10 @@ def build_so_shipping_pdf(
         c.drawString(120*mm, y, f"物流單號：{logistics_no}")
 
     y -= 12*mm
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont(CHINESE_FONT, 11)
     c.drawString(20*mm, y, "明細")
     y -= 8*mm
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
 
     for it in items:
         unit_price = it.get('unit_price', 0) or 0
@@ -255,9 +322,9 @@ def build_so_shipping_pdf(
             y = h-20*mm
 
     y -= 6*mm
-    c.setFont("Helvetica-Bold", 10)
+    c.setFont(CHINESE_FONT, 10)
     c.drawString(20*mm, y, "備註：")
-    c.setFont("Helvetica", 10)
+    c.setFont(CHINESE_FONT, 10)
     note_text = note or ""
     if ship_note:
         note_text = f"{note_text} | 出貨備註：{ship_note}" if note_text else f"出貨備註：{ship_note}"
@@ -283,12 +350,12 @@ def build_merged_unpaid_so_pdf(
     c = canvas.Canvas(buf, pagesize=A4)
     w, h = A4
 
-    # 使用等寬字體以確保固定欄位寬度
-    c.setFont("Courier-Bold", 14)
+    # 使用支持中文的字體
+    c.setFont(CHINESE_FONT, 14)
     c.drawString(20*mm, h-20*mm, "合併未付款銷貨單")
     
     # 客戶資訊區塊（固定位置）
-    c.setFont("Courier", 10)
+    c.setFont(CHINESE_FONT, 10)
     y = h-35*mm
     c.drawString(20*mm, y, f"客戶名稱：{customer_name}")
     y -= 6*mm
@@ -354,10 +421,10 @@ def build_merged_unpaid_so_pdf(
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2], y, price_unit[:8])
         pieces_per_case = it.get('pieces_per_case', '') or ''
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3], y, str(pieces_per_case) if pieces_per_case else '-')
-        # 件數(箱數) 使用粗體
-        c.setFont("Courier-Bold", 9)
+        # 件數(箱數)
+        c.setFont(CHINESE_FONT, 9)
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4], y, str(int(case_qty)))
-        c.setFont("Courier", 9)
+        c.setFont(CHINESE_FONT, 9)
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5], y, f"NT${unit_price:.2f}")
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, f"NT${subtotal:.2f}")
         c.drawString(item_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, note_text[:15])
@@ -367,7 +434,7 @@ def build_merged_unpaid_so_pdf(
             c.showPage()
             y = h-20*mm
             # 新頁面重複表頭
-            c.setFont("Courier-Bold", 9)
+            c.setFont(CHINESE_FONT, 9)
             c.drawString(header_x, y, "項")
             c.drawString(header_x + col_widths[0], y, "品名規格")
             c.drawString(header_x + col_widths[0] + col_widths[1], y, "MARK")
@@ -378,17 +445,17 @@ def build_merged_unpaid_so_pdf(
             c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6], y, "小計")
             c.drawString(header_x + col_widths[0] + col_widths[1] + col_widths[2] + col_widths[3] + col_widths[4] + col_widths[5] + col_widths[6] + col_widths[7], y, "備註")
             y -= 8*mm
-            c.setFont("Courier", 9)
+            c.setFont(CHINESE_FONT, 9)
 
     # 底部總計
     y -= 8*mm
-    c.setFont("Courier-Bold", 9)
+    c.setFont(CHINESE_FONT, 9)
     c.drawString(header_x, y, f"總件數：{int(total_qty)}{price_unit_used or '件'}")
     c.drawRightString(w - 20*mm, y, f"銷貨總金額：NT${total_amount:.2f}")
     
     # 顯示來源單號（如果空間足夠）
     y -= 10*mm
-    c.setFont("Courier", 8)
+    c.setFont(CHINESE_FONT, 8)
     so_nos_text = f"來源單號：{', '.join(source_so_nos)}"
     # 如果單號太多，分行顯示
     if len(so_nos_text) > 100:

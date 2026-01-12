@@ -7,6 +7,7 @@ import { api } from '../app/api';
 import { printFromPath } from '../app/printService';
 import { useNavigate } from 'react-router-dom';
 import { useResponsive } from '../hooks/useResponsive';
+import { usePrintPreview } from '../hooks/usePrintPreview';
 
 dayjs.extend(isoWeek);
 
@@ -43,6 +44,7 @@ type MergedData = {
 export default function MergedUnpaidSOs() {
   const nav = useNavigate();
   const { isMobile } = useResponsive();
+  const { showPreview, PrintPreview } = usePrintPreview();
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
@@ -85,32 +87,28 @@ export default function MergedUnpaidSOs() {
     }
   };
 
-  const handlePrint = async () => {
+  const handlePrint = () => {
     if (!selectedCustomer) {
       message.warning('請選擇客戶');
       return;
     }
 
-    try {
-      const params: any = {
-        customer_name: selectedCustomer,
-      };
-      if (dateRange && dateRange[0] && dateRange[1]) {
-        params.shipped_at_from = dateRange[0].format('YYYY-MM-DD');
-        params.shipped_at_to = dateRange[1].format('YYYY-MM-DD');
-      }
-      const queryString = new URLSearchParams(params).toString();
-      const filename = `合併未付款銷貨單_${selectedCustomer}_${dateRange?.[0]?.format('YYYYMMDD') || ''}_${dateRange?.[1]?.format('YYYYMMDD') || ''}.pdf`;
-      
-      await printFromPath(`/sales-orders/merged-unpaid/print.pdf?${queryString}`, {
-        encoding: 'cp950',
-        copies: 1,
-        alsoDownload: false,
-        filename,
-      });
-    } catch (e: any) {
-      message.error('列印任務發送失敗：' + (e.message || '未知錯誤'));
+    const params: any = {
+      customer_name: selectedCustomer,
+    };
+    if (dateRange && dateRange[0] && dateRange[1]) {
+      params.shipped_at_from = dateRange[0].format('YYYY-MM-DD');
+      params.shipped_at_to = dateRange[1].format('YYYY-MM-DD');
     }
+    const queryString = new URLSearchParams(params).toString();
+    const filename = `合併未付款銷貨單_${selectedCustomer}_${dateRange?.[0]?.format('YYYYMMDD') || ''}_${dateRange?.[1]?.format('YYYYMMDD') || ''}.pdf`;
+    
+    showPreview(`/sales-orders/merged-unpaid/print.pdf?${queryString}`, {
+      encoding: 'cp950',
+      copies: 1,
+      alsoDownload: false,
+      filename,
+    });
   };
 
   const itemColumns = [
@@ -335,6 +333,7 @@ export default function MergedUnpaidSOs() {
           />
         </Card>
       )}
+      <PrintPreview />
     </div>
   );
 }

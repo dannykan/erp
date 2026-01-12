@@ -3,11 +3,13 @@ import { Card, Descriptions, Button, Table, Space, message } from 'antd';
 import { api } from '../app/api';
 import { printFromPath } from '../app/printService';
 import { useParams, useNavigate } from 'react-router-dom';
+import { usePrintPreview } from '../hooks/usePrintPreview';
 
 export default function WorkOrderDetail() {
   const { id } = useParams();
   const woId = Number(id);
   const nav = useNavigate();
+  const { showPreview, PrintPreview } = usePrintPreview();
   const [wo, setWo] = useState<any>(null);
 
   async function load() {
@@ -57,8 +59,8 @@ export default function WorkOrderDetail() {
           </Button>
 
           <Button
-            onClick={async () => {
-              await printFromPath(`/work-orders/${woId}/print`, {
+            onClick={() => {
+              showPreview(`/work-orders/${woId}/print`, {
                 encoding: 'cp950',
                 copies: 1,
                 alsoDownload: false,
@@ -103,6 +105,7 @@ export default function WorkOrderDetail() {
           { title: '備註', dataIndex: 'note', width: 150 },
         ]}
       />
+      <PrintPreview />
     </Card>
   );
 }

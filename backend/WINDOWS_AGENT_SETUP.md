@@ -85,6 +85,8 @@ import time
 import base64
 import requests
 from datetime import datetime
+from PIL import Image
+import io
 
 CLOUD_BASE = os.getenv("CLOUD_BASE", "http://localhost:8000")
 PRINT_AGENT_TOKEN = os.getenv("PRINT_AGENT_TOKEN", "")
@@ -170,6 +172,51 @@ def print_pdf(base64_pdf, copies=1):
         print(f"列印失敗：{e}")
         return False
 
+def print_image(base64_image, copies=1):
+    """將 Base64 編碼的圖片（PNG）發送到列印機"""
+    try:
+        from PIL import Image
+        import io
+        
+        # 解碼 Base64
+        image_bytes = base64.b64decode(base64_image)
+        
+        # 使用 PIL 打開圖片
+        img = Image.open(io.BytesIO(image_bytes))
+        
+        # 轉換為 BMP 格式（Windows 點陣印表機更支持 BMP）
+        bmp_buffer = io.BytesIO()
+        img.save(bmp_buffer, format='BMP')
+        bmp_bytes = bmp_buffer.getvalue()
+        
+        # 儲存為臨時檔案
+        temp_file = f"C:\\temp\\print_{datetime.now().strftime('%Y%m%d_%H%M%S')}.bmp"
+        os.makedirs(os.path.dirname(temp_file), exist_ok=True)
+        
+        with open(temp_file, 'wb') as f:
+            f.write(bmp_bytes)
+        
+        # 使用 Windows 預設列印指令列印
+        import subprocess
+        for _ in range(copies):
+            subprocess.run([
+                "powershell",
+                "-Command",
+                f"Start-Process -FilePath '{temp_file}' -Verb Print -WindowStyle Hidden"
+            ], check=True)
+            if copies > 1:
+                time.sleep(1)  # 多份列印間隔
+        
+        # 清理臨時檔案（可選，延遲刪除）
+        time.sleep(5)
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+        
+        return True
+    except Exception as e:
+        print(f"列印圖片失敗：{e}")
+        return False
+
 def main():
     """主迴圈"""
     print(f"列印 Agent 啟動")
@@ -185,13 +232,19 @@ def main():
             
             if job:
                 job_id = job["id"]
-                base64_pdf = job["text"]
+                job_kind = job.get("kind", "raw")
+                job_text = job["text"]
                 copies = job.get("copies", 1)
                 
-                print(f"[{datetime.now()}] 收到任務: {job_id} (份數: {copies})")
+                print(f"[{datetime.now()}] 收到任務: {job_id} (類型: {job_kind}, 份數: {copies})")
                 
-                # 列印
-                success = print_pdf(base64_pdf, copies)
+                # 根據任務類型選擇列印方式
+                if job_kind == "image_text":
+                    print(f"列印 IMG job={job_id} rotate={os.getenv('ROTATE_DEG', '0')}")
+                    success = print_image(job_text, copies)
+                else:
+                    print(f"列印 RAW job={job_id}")
+                    success = print_pdf(job_text, copies)
                 
                 # 回報結果
                 if success:
@@ -220,8 +273,10 @@ if __name__ == "__main__":
 在執行 Agent 之前，需要安裝 Python 依賴：
 
 ```powershell
-pip install requests
+pip install requests pillow
 ```
+
+**注意：** `pillow` 用於處理 `image_text` 類型的列印任務（將 PNG 轉換為 BMP 格式）。
 
 ## 驗證設定
 

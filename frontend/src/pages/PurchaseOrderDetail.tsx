@@ -3,11 +3,13 @@ import { Card, Descriptions, Table, Button, Space, message } from 'antd';
 import { api } from '../app/api';
 import { printFromPath } from '../app/printService';
 import { useParams, useNavigate } from 'react-router-dom';
+import { usePrintPreview } from '../hooks/usePrintPreview';
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams();
   const poId = Number(id);
   const nav = useNavigate();
+  const { showPreview, PrintPreview } = usePrintPreview();
   const [po, setPo] = useState<any>(null);
 
   useEffect(() => {
@@ -23,8 +25,8 @@ export default function PurchaseOrderDetail() {
         <Space wrap size="small" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
           <Button onClick={() => nav(-1)}>返回</Button>
           <Button
-            onClick={async () => {
-              await printFromPath(`/purchase-orders/${poId}/print`, {
+            onClick={() => {
+              showPreview(`/purchase-orders/${poId}/print`, {
                 encoding: 'cp950',
                 copies: 1,
                 alsoDownload: false,
@@ -141,6 +143,7 @@ export default function PurchaseOrderDetail() {
           );
         }}
       />
+      <PrintPreview />
     </Card>
   );
 }
