@@ -32,6 +32,7 @@ const allRoutes = {
     { path: '/customers', name: '客戶管理' },
     { path: '/users', name: '人員管理' },
     { path: '/inventory', name: '庫存查詢' },
+    { path: '/test-print', name: '測試列印' },
     { path: '/purchase-orders', name: '進貨入庫' },
     { path: '/sales-orders', name: '銷貨出庫' },
     { path: '/sales-orders/list', name: '銷貨單查詢' },

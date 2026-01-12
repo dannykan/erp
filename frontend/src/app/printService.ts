@@ -40,16 +40,34 @@ export async function sendToPrintQueue(
   const { encoding = 'cp950', copies = 1, alsoDownload = false, filename } = options;
 
   try {
+    console.log('=== 開始發送列印任務 ===');
+    console.log('PDF Blob size:', blob.size, 'bytes');
+    console.log('PDF Blob type:', blob.type);
+    
     // 將 PDF blob 轉換為 Base64 字串（用於在數據庫中存儲）
     const base64Text = await blobToBase64(blob);
+    console.log('Base64 length:', base64Text.length);
+    console.log('Base64 preview:', base64Text.substring(0, 50) + '...');
 
     // 發送到 print job 佇列
-    const result = await api.createPrintJob({
+    const payload = {
       kind: 'raw',
       text: base64Text,
       encoding,
       copies,
+    };
+    console.log('Print job payload:', {
+      kind: payload.kind,
+      encoding: payload.encoding,
+      copies: payload.copies,
+      textLength: payload.text.length,
     });
+
+    const result = await api.createPrintJob(payload);
+    console.log('Print job created:', result);
+    console.log('Job ID:', result.id);
+    console.log('Job Status:', result.status);
+    console.log('=== 列印任務已加入佇列 ===');
 
     message.success(`列印任務已加入佇列（任務 ID: ${result.id}）`);
 
@@ -67,7 +85,13 @@ export async function sendToPrintQueue(
 
     return { jobId: result.id, success: true };
   } catch (error: any) {
-    console.error('發送列印任務失敗:', error);
+    console.error('=== 發送列印任務失敗 ===');
+    console.error('Error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      status: error.status,
+      stack: error.stack,
+    });
     message.error(`列印任務發送失敗：${error.message || '未知錯誤'}`);
     return { jobId: '', success: false };
   }
@@ -95,8 +119,12 @@ export async function printFromPath(
   } = {}
 ): Promise<{ jobId: string; success: boolean }> {
   try {
+    console.log('=== 開始從路徑獲取 PDF ===');
+    console.log('PDF Path:', pdfPath);
+    
     // 構建完整 URL
     const pdfUrl = pdfPath.startsWith('http') ? pdfPath : `${API_BASE}${pdfPath}`;
+    console.log('Full PDF URL:', pdfUrl);
     
     // 使用 fetch 獲取 PDF
     const token = localStorage.getItem('token');
@@ -104,16 +132,34 @@ export async function printFromPath(
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
+    console.log('Fetch headers:', { hasToken: !!token });
 
     const response = await fetch(pdfUrl, { headers });
+    console.log('PDF Response status:', response.status);
+    console.log('PDF Response headers:', Object.fromEntries(response.headers.entries()));
+    
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('PDF fetch error:', errorText);
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
     const blob = await response.blob();
+    console.log('PDF Blob received:', {
+      size: blob.size,
+      type: blob.type,
+    });
+    console.log('=== PDF 獲取成功，開始發送到列印佇列 ===');
+    
     return await sendToPrintQueue(blob, options);
   } catch (error: any) {
-    console.error('獲取 PDF 失敗:', error);
+    console.error('=== 獲取 PDF 失敗 ===');
+    console.error('Error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      status: error.status,
+      stack: error.stack,
+    });
     message.error(`獲取 PDF 失敗：${error.message || '未知錯誤'}`);
     return { jobId: '', success: false };
   }

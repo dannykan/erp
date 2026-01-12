@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, Response, Header
+from fastapi import APIRouter, Depends, HTTPException, Response, Header, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, desc
 
 from app.schemas.print_jobs import PrintJobCreate, PrintAckIn
 from app.models.print_job import PrintJob
@@ -17,6 +17,36 @@ def require_agent(auth: str | None):
     token = auth.split(" ", 1)[1].strip()
     if token != settings.PRINT_AGENT_TOKEN:
         raise HTTPException(status_code=403, detail="Invalid token")
+
+
+# ===== (A1) 查詢任務列表（用於調試）- 必須在 POST 之前 =====
+@router.get("", response_model=list[dict])
+def list_print_jobs(
+    db: Session = Depends(get_db),
+    status: str | None = Query(None, description="篩選狀態：queued|processing|done|failed"),
+    limit: int = Query(20, ge=1, le=100, description="最多返回筆數"),
+):
+    """查詢打印任務列表（用於調試）"""
+    qry = db.query(PrintJob).order_by(desc(PrintJob.created_at))
+    if status:
+        qry = qry.filter(PrintJob.status == status)
+    jobs = qry.limit(limit).all()
+    return [
+        {
+            "id": job.id,
+            "kind": job.kind,
+            "status": job.status,
+            "copies": job.copies,
+            "encoding": job.encoding,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "locked_at": job.locked_at.isoformat() if job.locked_at else None,
+            "locked_by": job.locked_by,
+            "ack_at": job.ack_at.isoformat() if job.ack_at else None,
+            "ack_message": job.ack_message,
+            "text_length": len(job.text) if job.text else 0,
+        }
+        for job in jobs
+    ]
 
 
 # ===== (A) 建立任務：給你雲端任意 API 呼叫用 =====

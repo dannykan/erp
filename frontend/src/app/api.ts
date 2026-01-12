@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_BASE || 'https://chopsticks-erp-backend.onrender.com';
 
 export type SOPaged = { rows: any[]; total: number };
 
@@ -14,7 +14,10 @@ async function request(path: string, opts: RequestInit = {}) {
   const token = getToken();
 
   const headers = new Headers(opts.headers || {});
-  headers.set('Content-Type', 'application/json');
+  // 确保使用 UTF-8 编码，避免中文乱码
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json; charset=utf-8');
+  }
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(`${API_BASE}${path}`, {

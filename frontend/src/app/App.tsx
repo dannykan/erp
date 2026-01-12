@@ -40,6 +40,7 @@ import SalesReportProductsRank from '../pages/SalesReportProductsRank';
 import SalesReportProductCustomers from '../pages/SalesReportProductCustomers';
 import CustomerSalesHistory from '../pages/CustomerSalesHistory';
 import MergedUnpaidSOs from '../pages/MergedUnpaidSOs';
+import TestPrint from '../pages/TestPrint';
 import DefaultRedirect from './DefaultRedirect';
 
 export default function App() {
@@ -309,6 +310,17 @@ export default function App() {
           <RequireAuth>
             <RequireRole allow={['admin', 'supervisor']}>
               <AppLayout><Users /></AppLayout>
+            </RequireRole>
+          </RequireAuth>
+        }
+      />
+
+      <Route
+        path="/test-print"
+        element={
+          <RequireAuth>
+            <RequireRole allow={['admin', 'supervisor', 'office']}>
+              <AppLayout><TestPrint /></AppLayout>
             </RequireRole>
           </RequireAuth>
         }
